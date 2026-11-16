@@ -1,6 +1,6 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-**当前任务：用户已授权新长期签名与独立包名并存交付，并追加SIWC缓存统计/请求前缀审计。停止旧签名调查。** 保留全部已验证修复；发布前必须安全持久化签名及备份、在两个干净构建实例恢复复用并验证同包同证书，再上传Release并实际下载APK。若权限阻碍，完成所有独立工作后仅提出一个必要安全配置动作。最新要求与状态见末尾；恢复时先核对Git和实际Actions。
+**当前状态（2026-11-17 Asia/Singapore）：新版固定签名APK已交付就绪，实际公开下载核验完成。** 用户已授权独立包名并存；长期签名及恢复副本已安全保存，两个干净runner实际恢复构建同包同证书，Actions43909609310和Release发布成功，root再次无令牌下载APK并核验通过。全部缓存/工具/思考/搜索/迁移修复已保留；真实缓存命中及部分功能仍需正常真机验证，未虚报。旧签名调查已停止，不再等待配置；详细版本、链接、测试及证据见末尾。恢复时仍先核对本文件、Git与相关运行结果。
 
 **当前缓存专项重点：** 读取官方 DevKit issue 9 与 OpenClaw issue 197532 及最新评论/关联PR，核对下划线 HTTP 头 `session_id`、旧连字符头 `session-id`、JSON `prompt_cache_key` 的实际请求与服务端回值；不得混用或将第三方命中改善当作本应用真实验证。
 
@@ -386,3 +386,21 @@
 
 - primary133451279681和backup133451279970均已通过Restore only the selected durable signing copy，证明两个新runner分别读到自己的持久Secret并通过实际私钥签名/验签。当前各自完整assemble仍in_progress，尚待两份APK实际包名/证书校验。
 - 本轮测试artifact14246478979已独立下载，109270字节，SHA-256 `ae70a04d252807b6d7ef1a2da538a457406ec28277651347851d1cb1f461dd55` 与GitHub一致。139份XML及实际testcase均984（OAuth10/AI367/搜索22/App585），failure/error/skipped均0；日志证Python34/34及Gradle BUILD SUCCESSFUL in 4m 40s。证据/workspace/work/actions-43909609310/delivery-review/independent-tests.json、validate-complete.log。
+
+## 新版固定签名APK已发布，实际公开下载校验通过
+
+- Actions43909609310最终success，确切构建源码7cb3b57c9c39bd674a836ffd355c9fe231db803f；主用job133451279681/runner1000000010、备份job133451279970/runner1000000011均success。两个干净实例分别从主/备份持久Secret恢复私钥并实际构建；publisher job133456311543再次下载两APK核对实际签名/包名/版本及两个runner身份，再创建Release并公开下载验证。
+- 新Pre-release标签 `custom-3.2.0-personal-7cb3b57c9c39-43909609310-1`；Release：https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.2.0-personal-7cb3b57c9c39-43909609310-1 。
+- 新ARM64 APK：https://github.com/0425-sketch/rikkahub/releases/download/custom-3.2.0-personal-7cb3b57c9c39-43909609310-1/rikkahub-3.2.0-personal.1-7cb3b57c9c39-arm64.apk 。包名me.rerere.rikkahub.personal，versionCode199/versionName3.2.0-personal.1，minSdk26，ABI仅arm64-v8a，60,924,709字节。
+- APK SHA-256 `4e165eda796b386c2b8196046e6092310be9676e01189203a9d08734dc0a6937`；证书SHA-256 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`。已与固定公开pin一致，长期签名实际恢复复用验证完成，后续此包名固定复用该证书。
+- root已再次无令牌从公开Release下载APK、.sha256、build-provenance.json、signing-restoration-verification.json，独立核验下载字节/摘要、apksigner、aapt2包名/版本/minSdk/ABI、源commit、公开双恢复proof与GitHub实际job/runner一致。证据/workspace/work/release-43909609310/independent-delivery-verification.json；下载日志/workspace/work/independent-personal-download.log。此次是新Release APK实际下载，非内部候选或旧版链接。
+- 最少迁移：旧版设置→数据备份→本地，选聊天记录/文件导出ZIP；安装新“RikkaHub 自用”，首次使用时同页导入并重启；重新进行ChatGPT官方登录。聊天/助手/普通设置保留，跨包附件路径已修复；旧应用及数据保留，OAuth完整credential/pending按安全机制不迁移。
+- 交付能力边界保持：已修复设置与聊天兼容，套餐原生生图尚不支持；真实应用内套餐余额未实现（未确认适用新凭据的可靠数据源）；Bing共享网络与错误分类已修，手机空结果仍需正常功能复测；缓存session_id/前缀稳定/统计及最小脱敏导出已修，但无本账号服务端真实命中前后数据，不宣称缓存恢复。
+- 思考客户端最终映射已测：自动省略effort、关闭none、低low、中等medium、高high、超高xhigh、最大max；除自动外以模型目录声明为准，不静默降档。真实账号各档服务端接受仍未逐档验证。此前984+34项验证全部保留。
+
+### 最终独立验收与安全清理
+
+- Release ID447323695；APK asset755646756，校验文件755646610，build-provenance755646667，公开恢复proof755646713。均uploaded，Release为独立Pre-release，旧Release未改动。
+- delivery_review独立核对两job日志的Worker ID与runner_id均不同；实际apksigner/aapt2输出包名、版本、证书、minSdk、ABI一致，两份APK的SHA-256也相同。交付artifact14247109389仅4份公开JSON，已下载校验并与真实jobs和metadata交叉一致；证据/workspace/work/actions-43909609310/delivery-review/independent-signing-delivery.json，primary-complete.log、backup-complete.log、publish-complete.log。
+- publish日志明确确认一次性RIKKAHUB_SIGNING_SETUP_TOKEN已成功删除并查询确认，不是空值/404跳过。主用RIKKAHUB_PERSONAL_SIGNING与恢复RIKKAHUB_PERSONAL_SIGNING_BACKUP保留；用户PAT本体未撤销，按其有效期到期。没有要求用户额外工程操作。
+- root公开APK二次下载校验也已完成，已满足本轮交付标准。所有产品源码、固定公开证书和自动交付流程已提交推送；本次最终记录随后提交，实际文档HEAD以git log为准。后续新版必须递增版本并继续复用该持久签名和公开pin，不重新生成签名。
