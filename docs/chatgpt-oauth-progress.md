@@ -456,3 +456,9 @@
 
 - Actions43923584665 source37fba983的validate133496985638与signing-state133496985370均success；本轮测试artifact由独立审阅代理下载核对990份testcase实际结果，详细计数随后补充。
 - 主用构建job133501686982/runner1000000017，备份job133501687108/runner1000000018，均已启动且实例不同。依赖准备后分别读取各自持久Secret，固定证书仍882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd；尚待实际APK及发布核验，不提前称交付完成。
+
+- 独立下载本轮test artifact14255666290，110481字节，SHA-256 9ed569a11a34d0a0c240373f82805719c08b305f78e48f0a611f986db753099d与GitHub一致；140份XML及实际testcase均990（OAuth11/AI367/Search22/App590），failure/error/skipped均0。旧matching-state用时0.544秒、新双host12次禁retry完整响应测试6.336秒均通过。完整日志证Python34/34、Gradle6m22s成功。证据/workspace/work/actions-43923584665/delivery-review/independent-tests.json及validate-complete.log。
+
+### 两个固定签名构建成功，发布与公开下载门禁运行中
+
+- 主用133501686982与备份133501687108均success，从各自已保存Secret恢复并完成实际APK构建。publisher job133506099120已进入核对两份实际APK、发布并下载验证的步骤，source仍37fba983。root将随后独立再下载并对照personal.1实际APK验证覆盖身份；目前尚未提前给出下载链接。
