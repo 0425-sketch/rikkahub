@@ -207,3 +207,16 @@
 - 已推送合理代码阶段：搜索 `274eb04d`、AI协议/思考 `2b81be52`、App设置/辅助请求/版本198 `59e7bc7b`。应用与AI源码无未提交修改。
 - 发布脚本现固定校验上一版证书 `369f5d9de364514a92337b02efc50ce5c35bfb53753c325286c0efcaabc5b497`，在任何Release创建/上传之前检查；不接受通过调用参数更换期望值。不匹配时仅保留公开apk-verification.json，不泄露签名材料，不发布误导更新。
 - 工作流保持原exact github.sha checkout与现有构建设置，加入搜索测试/报告和4项升级门禁测试，versionCode198同包名。Python4项重新通过、语法及workflow YAML通过、git diff --check通过。以下交付提交将触发新Actions，需核对实际headSHA、测试/构建结果和签名门禁；不得重复以缺失原key的同一路径尝试发布。
+
+## 第二轮阶段：新版Actions已启动
+
+- 交付源码 `b9f795224c260bcb0b3de7cd77c115eb188cb2f6` 已推送，工作区代码干净。
+- 新Actions：<https://github.com/0425-sketch/rikkahub/actions/runs/43888601864>，已确认in_progress且head SHA完全匹配。尚未得到构建/签名/发布结论；独立代理只读监看并保留完成日志，不重跑已确认无效路径。
+- 本地同源码ARM64完整assemble进行中，日志 `/workspace/work/chatgpt-v2-local-apk.log`。后续必须核对实际APK包名/版本/ABI/签名；不能用全部单测通过代替可覆盖安装验收。
+
+## 第二轮阶段：本地完整APK完成，证书不兼容已实测
+
+- 同源码 `b9f795224c260bcb0b3de7cd77c115eb188cb2f6` 的 `:app:assembleGithubDebug` 成功（36秒），日志 `/workspace/work/chatgpt-v2-local-apk.log`。签名/元数据实测文件 `/workspace/work/chatgpt-v2-local-apk-check/apk-verification.json`。
+- 本地候选APK：60,872,297字节；SHA-256 `7a82ca16ee9ed337670e2aeb32c515845a29545bf0a0b6a4132d6de70cafa702`；包名 `me.rerere.rikkahub.chatgpt.debug`，versionCode198，versionName `3.2.0-chatgpt.1`，minSdk26，仅arm64-v8a。
+- APK签名本身有效，但证书 `25eba60a12a309f294a68f93cd9b77966827e3b07b6ab742d11aad49f7d85289` 与已安装版证书不同，`upgrade_certificate_matches=false`。此文件是内部候选，不能作为覆盖升级交付；未上传/创建Release，未要求用户卸载或清数据。
+- Actions `43888601864` / job `133373383281` 已通过exact源码与4项发布门禁测试、SDK准备，现进行全套测试+完整打包。签名配置步骤成功仅说明流程执行，不代表原key存在；等待最终证书校验事实。
