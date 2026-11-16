@@ -85,6 +85,7 @@ import kotlinx.coroutines.flow.collectLatest
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.asr.ASRStatus
 import me.rerere.hugeicons.HugeIcons
@@ -96,6 +97,7 @@ import me.rerere.hugeicons.stroke.Fullscreen
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getQuickMessagesOfAssistant
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
@@ -305,9 +307,13 @@ fun ChatInput(
                                 )
 
                                 // Reasoning
-                                if (chatModel?.abilities?.contains(ModelAbility.REASONING) == true) {
+                                if (chatModel?.abilities?.contains(ModelAbility.REASONING) == true ||
+                                    chatModel?.findProvider(settings.providers) is ProviderSetting.ChatGPT
+                                ) {
                                     ReasoningButton(
                                         reasoningLevel = assistant.reasoningLevel,
+                                        model = chatModel,
+                                        provider = chatModel?.findProvider(settings.providers),
                                         onUpdateReasoningLevel = {
                                             onUpdateAssistant(assistant.copy(reasoningLevel = it))
                                         },

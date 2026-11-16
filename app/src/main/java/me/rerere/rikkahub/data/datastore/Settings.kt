@@ -86,6 +86,8 @@ data class Settings(
     val webServerLocalhostOnly: Boolean = false,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
     val sponsorAlertDismissedAt: Int = 0,
+    // Kept until the user sees why incompatible saved ChatGPT hosted tools were disabled.
+    val chatGPTToolMigrationNoticePending: Boolean = false,
 ) {
     companion object {
         // 构造一个用于初始化的settings, 但它不能用于保存，防止使用初始值存储

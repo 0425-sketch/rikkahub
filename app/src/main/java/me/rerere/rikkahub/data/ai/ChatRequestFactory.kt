@@ -266,26 +266,22 @@ class ChatRequestFactory(
             processingStatus = processingStatus,
             workspaceCwd = turn.workspaceCwd,
         ).expandNotices()
-        val params = TextGenerationParams(
-            model = turn.model,
-            temperature = assistant.temperature,
-            topP = assistant.topP,
-            maxTokens = assistant.maxTokens,
-            tools = turn.tools,
-            reasoningLevel = assistant.reasoningLevel,
-            customHeaders = buildList {
-                addAll(assistant.customHeaders)
-                addAll(turn.model.customHeaders)
-            },
-            customBody = buildList {
-                addAll(assistant.customBodies)
-                addAll(turn.model.customBodies)
-            },
-            sessionId = turn.conversationId.toString(),
-        )
-        return StepRequest(requestMessages, params)
+        return StepRequest(requestMessages, turn.textGenerationParams())
     }
 }
+
+/** 会话快照的档位用于本轮每一步；自定义字段按助手、模型顺序合并，模型优先。 */
+internal fun ChatTurnContext.textGenerationParams(): TextGenerationParams = TextGenerationParams(
+    model = model,
+    temperature = assistant.temperature,
+    topP = assistant.topP,
+    maxTokens = assistant.maxTokens,
+    tools = tools,
+    reasoningLevel = assistant.reasoningLevel,
+    customHeaders = assistant.customHeaders + model.customHeaders,
+    customBody = assistant.customBodies + model.customBodies,
+    sessionId = conversationId.toString(),
+)
 
 private const val CONTINUATION_HINT =
     "The conversation history before this point was replaced by the summary above. " +

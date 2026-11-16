@@ -1874,4 +1874,21 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chat_message_tool_phone_use_open_app_name">打开应用：%1$s</string>
   <string name="chat_message_tool_phone_use_list_apps">列出应用</string>
   <string name="chat_message_tool_phone_use_wait">等待 %1$s 秒</string>
+  <string name="setting_page_built_in_tools_route_desc">这些工具由当前提供商执行，可用性取决于实际 API 路由和模型能力。图像生成与输入图片识别、本机执行的工具是不同功能。</string>
+  <string name="setting_page_built_in_tools_search_provider_desc">使用提供商的网页搜索能力，具体支持情况由当前模型和账号决定。</string>
+  <string name="setting_page_chatgpt_image_generation_unsupported">官方 ChatGPT 套餐路由暂不支持图像生成。输入图片识别和独立生图提供商仍可使用。</string>
+  <string name="setting_page_chatgpt_url_context_unsupported">此 ChatGPT 路由不提供 Gemini 的 URL 上下文工具。受支持的网页搜索和本机网页读取工具仍可使用。</string>
+  <string name="setting_page_model_search_unsupported">官方模型目录已明确标记此模型不支持网页搜索。</string>
+  <string name="setting_page_tool_responses_required">此服务端工具需要 Responses API，当前连接使用 Chat Completions。</string>
+  <string name="setting_page_tool_route_unsupported">当前提供商和 API 路由不支持此服务端工具。</string>
+  <string name="setting_page_tool_provider_required">请先选择提供商，再设置其内置工具。</string>
+  <string name="setting_page_chatgpt_tools_migrated_title">已调整 ChatGPT 工具设置</string>
+  <string name="setting_page_chatgpt_tools_migrated_message">已关闭之前保存、但 ChatGPT 套餐路由不支持的内置工具选项，普通文本消息不会再被这些开关阻断。套餐原生生图仍不支持。图片识别、本机 MCP／函数工具、其他模型设置和独立生图提供商均保持不变。</string>
+  <string name="setting_provider_page_chatgpt_quota_unavailable_title">应用内暂无法查询套餐剩余额度</string>
+  <string name="setting_provider_page_chatgpt_quota_unavailable_desc">当前连接尚无可验证的套餐余额、适用周期和重置时间数据源。请在 ChatGPT 设置 → 用量中查看官方信息。</string>
+  <string name="reasoning_chatgpt_capabilities_hint">可用档位以此 ChatGPT 模型目录声明的能力为准，不支持的档位无法选择。</string>
+  <string name="reasoning_chatgpt_saved_unsupported">模型目录未声明支持已保存的“%1$s”档位。请选择自动或其他可用档位，应用不会静默更改。</string>
+  <string name="reasoning_chatgpt_level_unsupported">ChatGPT 模型目录未声明支持此档位</string>
+  <string name="reasoning_chatgpt_auto">使用模型默认档位</string>
+  <string name="reasoning_chatgpt_effort">请求档位：%1$s</string>
 </resources>

@@ -18,6 +18,7 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessage
 import me.rerere.common.android.Logging
 import me.rerere.rikkahub.data.ai.prompts.MemoryConsolidationConversation
@@ -38,6 +39,7 @@ import me.rerere.rikkahub.data.db.entity.MemoryConsolidationEntity
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MemoryFile
+import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.data.model.getChatModelOf
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
@@ -291,15 +293,20 @@ private fun List<Batch>.withinTranscriptBudget(): List<Batch> {
 }
 
 // 依次用记忆整理模型、快速模型，推理强度跟着用上的那个；整理要调用工具，都不支持时退回对话模型
-private fun Settings.consolidationModel(
+internal fun Settings.consolidationModel(
     conversation: Conversation?,
     assistant: Assistant,
 ): Pair<Model, ReasoningLevel>? {
     fun toolModel(id: Uuid?) = id?.let { findModelById(it) }?.takeIf { ModelAbility.TOOL in it.abilities }
+    // ChatGPT validates efforts against the fallback model's catalog; preserve other routes' existing behavior.
+    fun Model.fallbackWithReasoning(level: ReasoningLevel) = this to
+        if (findProvider(providers) is ProviderSetting.ChatGPT) level else fastModelReasoningLevel
     val (model, reasoningLevel) = toolModel(memoryModelId)?.let { it to memoryModelReasoningLevel }
         ?: toolModel(fastModelId)?.let { it to fastModelReasoningLevel }
-        ?: (conversation?.let { getChatModelOf(it) } ?: findModelById(assistant.chatModelId ?: chatModelId))
-            ?.let { it to fastModelReasoningLevel }
+        ?: conversation?.let { current ->
+            getChatModelOf(current)?.fallbackWithReasoning(getAssistantOf(current).reasoningLevel)
+        }
+        ?: findModelById(assistant.chatModelId ?: chatModelId)?.fallbackWithReasoning(assistant.reasoningLevel)
         ?: return null
     return model.copy(tools = emptySet()) to reasoningLevel
 }

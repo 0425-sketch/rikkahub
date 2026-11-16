@@ -84,6 +84,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.BuiltInTools
+import me.rerere.ai.provider.BuiltInToolUnavailableReason
+import me.rerere.ai.provider.builtInToolSupport
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
@@ -714,7 +716,8 @@ private fun ModelSettingsForm(
                 ModelFormTab.BUILT_IN_TOOLS -> {
                     // 内置工具页面
                     BuiltInToolsSettings(
-                        tools = model.tools,
+                        model = model,
+                        provider = parentProvider,
                         onUpdateTools = { tools ->
                             onModelChange(model.copy(tools = tools))
                         }
@@ -1437,9 +1440,12 @@ private fun ModelCard(
 
 @Composable
 private fun BuiltInToolsSettings(
-    tools: Set<BuiltInTools>,
+    model: Model,
+    provider: ProviderSetting?,
     onUpdateTools: (Set<BuiltInTools>) -> Unit
 ) {
+    val tools = model.tools
+    val effectiveProvider = model.providerOverwrite ?: provider
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1453,7 +1459,7 @@ private fun BuiltInToolsSettings(
         )
 
         Text(
-            text = stringResource(R.string.setting_page_built_in_tools_desc),
+            text = stringResource(R.string.setting_page_built_in_tools_route_desc),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1461,7 +1467,13 @@ private fun BuiltInToolsSettings(
         val availableTools = listOf(
             BuiltInTools.Search to Pair(
                 stringResource(R.string.setting_page_built_in_tools_search),
-                stringResource(R.string.setting_page_built_in_tools_search_desc)
+                stringResource(
+                    if (effectiveProvider is ProviderSetting.Google) {
+                        R.string.setting_page_built_in_tools_search_desc
+                    } else {
+                        R.string.setting_page_built_in_tools_search_provider_desc
+                    }
+                )
             ),
             BuiltInTools.UrlContext to Pair(
                 stringResource(R.string.setting_page_built_in_tools_url_context),
@@ -1478,15 +1490,25 @@ private fun BuiltInToolsSettings(
         CardGroup {
             availableTools.fastForEach { (tool, info) ->
                 val (title, description) = info
-                val checked = tool in tools
+                val support = effectiveProvider?.builtInToolSupport(model, tool)
+                val supported = support?.supported == true
+                val checked = supported && tool in tools
+                val reason = when (support?.reason) {
+                    BuiltInToolUnavailableReason.CHATGPT_IMAGE_GENERATION -> R.string.setting_page_chatgpt_image_generation_unsupported
+                    BuiltInToolUnavailableReason.CHATGPT_URL_CONTEXT -> R.string.setting_page_chatgpt_url_context_unsupported
+                    BuiltInToolUnavailableReason.MODEL_WEB_SEARCH -> R.string.setting_page_model_search_unsupported
+                    BuiltInToolUnavailableReason.RESPONSES_REQUIRED -> R.string.setting_page_tool_responses_required
+                    BuiltInToolUnavailableReason.PROVIDER_ROUTE -> R.string.setting_page_tool_route_unsupported
+                    null -> if (effectiveProvider == null) R.string.setting_page_tool_provider_required else null
+                }
                 val toggle = { enabled: Boolean ->
-                    onUpdateTools(if (enabled) tools + tool else tools - tool)
+                    if (supported) onUpdateTools(if (enabled) tools + tool else tools - tool)
                 }
                 item(
-                    onClick = { toggle(!checked) },
+                    onClick = if (supported) ({ toggle(!checked) }) else null,
                     colors = itemColors,
-                    supportingContent = { Text(description) },
-                    trailingContent = { Switch(checked = checked, onCheckedChange = toggle) },
+                    supportingContent = { Text(reason?.let { stringResource(it) } ?: description) },
+                    trailingContent = { Switch(checked = checked, enabled = supported, onCheckedChange = toggle) },
                     headlineContent = { Text(title) },
                 )
             }

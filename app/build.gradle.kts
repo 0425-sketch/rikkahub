@@ -176,15 +176,15 @@ baselineProfile {
 // 不手动关的话生成用的包会被 R8 内联、合并类，profile 里记下的是优化后的类和方法
 androidComponents {
     onVariants(selector().withBuildType("debug").withFlavor("distribution" to "github")) { variant ->
-        // The original personal debug signing key is unavailable. Keep its data intact
-        // by installing the ChatGPT migration test build as a separate application.
+        // Keep the installed ChatGPT test application's identity. Publication additionally
+        // requires its original signing certificate; a new debug signer is not an upgrade.
         variant.applicationId.set("me.rerere.rikkahub.chatgpt.debug")
         variant.outputs.forEach { output ->
-            output.versionCode.set(197)
-            output.versionName.set("3.2.0-chatgpt")
+            output.versionCode.set(198)
+            output.versionName.set("3.2.0-chatgpt.1")
         }
-        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-chatgpt\"", null))
-        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"197\"", null))
+        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-chatgpt.1\"", null))
+        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"198\"", null))
         android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
             variant.signingConfig?.from(signingConfig)
         }

@@ -510,6 +510,11 @@ private fun ChatGPTPlanStatus(provider: ProviderSetting.ChatGPT) {
             supportingContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_account_hint)) },
         )
         item(
+            leadingContent = { CardGroupIcon(HugeIcons.DashboardSpeed02) },
+            headlineContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_quota_unavailable_title)) },
+            supportingContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_quota_unavailable_desc)) },
+        )
+        item(
             onClick = {
                 CustomTabsOAuthAuthorizationLauncher.launch(context, "https://chatgpt.com/settings/usage")
             },

@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.ai.provider.ModelType
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.ui.components.ai.ModelField
@@ -111,6 +113,8 @@ internal fun AssistantBasicContent(
     onUpdate: (Assistant) -> Unit,
     vm: AssistantDetailVM
 ) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val effectiveModel = settings.findModelById(assistant.chatModelId, settings.chatModelId)
     val modelListState = rememberModelListState(
         modelId = assistant.chatModelId,
         providers = providers,
@@ -231,6 +235,8 @@ internal fun AssistantBasicContent(
                 trailingContent = {
                     ReasoningButton(
                         reasoningLevel = assistant.reasoningLevel,
+                        model = effectiveModel,
+                        provider = effectiveModel?.findProvider(providers),
                         onUpdateReasoningLevel = { level ->
                             onUpdate(assistant.copy(reasoningLevel = level))
                         }

@@ -25,8 +25,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -320,6 +322,22 @@ class RouteActivity : ComponentActivity() {
                 LocalASRState provides asr,
             ) {
                 TTSController()
+                if (!settings.init && settings.chatGPTToolMigrationNoticePending) {
+                    val dismissNotice = {
+                        lifecycleScope.launch {
+                            settingsStore.update { it.copy(chatGPTToolMigrationNoticePending = false) }
+                        }
+                        Unit
+                    }
+                    AlertDialog(
+                        onDismissRequest = dismissNotice,
+                        title = { Text(stringResource(R.string.setting_page_chatgpt_tools_migrated_title)) },
+                        text = { Text(stringResource(R.string.setting_page_chatgpt_tools_migrated_message)) },
+                        confirmButton = {
+                            TextButton(onClick = dismissNotice) { Text(stringResource(R.string.confirm)) }
+                        },
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

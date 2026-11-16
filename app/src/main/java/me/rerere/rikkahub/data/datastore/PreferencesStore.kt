@@ -186,6 +186,7 @@ class SettingsStore internal constructor(
 
         // 赞助提醒
         val SPONSOR_ALERT_DISMISSED_AT = intPreferencesKey("sponsor_alert_dismissed_at")
+        val CHATGPT_TOOL_MIGRATION_NOTICE_PENDING = booleanPreferencesKey("chatgpt_tool_migration_notice_pending")
 
         // Uses the same DataStore singleton without starting settings flows or requiring Koin.
         internal suspend fun restoreBeforeInitialization(context: Context, settings: Settings, launchCount: Int) {

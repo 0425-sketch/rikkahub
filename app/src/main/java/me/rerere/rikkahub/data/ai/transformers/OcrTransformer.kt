@@ -7,9 +7,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderManager
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
@@ -105,11 +107,7 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
                     parts = listOf(UIMessagePart.Image(part.url))
                 )
             ),
-            params = TextGenerationParams(
-                model = model,
-                customHeaders = model.customHeaders,
-                customBody = model.customBodies,
-            ),
+            params = ocrGenerationParams(model, providerSetting),
         )
         val content = result.message.toText().ifBlank { "[ERROR, OCR failed]" }
         Log.i(TAG, "performOcr: $content")
@@ -127,3 +125,16 @@ object OcrTransformer : InputMessageTransformer, KoinComponent {
         "[ERROR, OCR failed: $it]"
     }
 }
+
+/** OCR has no reasoning selector; let the ChatGPT model use its supported default. */
+internal fun ocrGenerationParams(model: Model, provider: ProviderSetting): TextGenerationParams =
+    TextGenerationParams(
+        model = model,
+        reasoningLevel = if ((model.providerOverwrite ?: provider) is ProviderSetting.ChatGPT) {
+            ReasoningLevel.AUTO
+        } else {
+            ReasoningLevel.OFF
+        },
+        customHeaders = model.customHeaders,
+        customBody = model.customBodies,
+    )

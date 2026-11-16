@@ -9,7 +9,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.CustomBody
+import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderManager
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.StreamChunkHandler
@@ -53,10 +55,7 @@ class TranslationHandler(
             providerHandler.streamText(
                 providerSetting = provider,
                 messages = messages,
-                params = TextGenerationParams(
-                    model = model,
-                    reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
-                ),
+                params = translationGenerationParams(model, provider, settings.translateThinkingBudget),
             ).collect { chunk ->
                 messages = streamChunkHandler.handle(messages, chunk)
                 val translatedText = messages.lastOrNull()?.toText() ?: ""
@@ -98,4 +97,19 @@ class TranslationHandler(
             }
         }
     }.flowOn(Dispatchers.IO)
+}
+
+/** ChatGPT 的模型请求覆盖同样用于翻译，确保最终请求接受同一套协议校验。 */
+internal fun translationGenerationParams(
+    model: Model,
+    provider: ProviderSetting,
+    thinkingBudget: Int,
+): TextGenerationParams {
+    val isChatGPT = (model.providerOverwrite ?: provider) is ProviderSetting.ChatGPT
+    return TextGenerationParams(
+        model = model,
+        reasoningLevel = ReasoningLevel.fromBudgetTokens(thinkingBudget),
+        customHeaders = if (isChatGPT) model.customHeaders else emptyList(),
+        customBody = if (isChatGPT) model.customBodies else emptyList(),
+    )
 }

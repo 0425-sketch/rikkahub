@@ -52,7 +52,7 @@ import androidx.graphics.shapes.RoundedPolygon
 import androidx.compose.ui.util.fastForEachIndexed
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
-import me.rerere.ai.provider.supportsBuiltInSearch
+import me.rerere.ai.provider.builtInToolSupport
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.AiSearch02
 import me.rerere.hugeicons.stroke.ArrowLeft01
@@ -178,7 +178,8 @@ private fun SearchPicker(
     val navBackStack = LocalNavController.current
 
     val provider = model?.findProvider(settings.providers)
-    val supportsBuiltInSearch = provider?.supportsBuiltInSearch == true
+    val supportsBuiltInSearch = model != null &&
+        provider?.builtInToolSupport(model, BuiltInTools.Search)?.supported == true
     val currentMode = searchModeOf(enableSearch, model)
     // 模型支持内置搜索，或已开启内置搜索（后者保证残留状态也能被关闭）时显示模型搜索选项
     val showModelSearch = model != null && (supportsBuiltInSearch || currentMode == SearchMode.BUILT_IN)

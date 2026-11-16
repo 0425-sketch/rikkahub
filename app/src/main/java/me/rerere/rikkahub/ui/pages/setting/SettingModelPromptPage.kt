@@ -44,6 +44,8 @@ import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.ui.components.ai.ReasoningButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
@@ -76,6 +78,8 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                     trailingContent = {
                         ReasoningButton(
                             reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
+                            model = settings.findModelById(settings.translateModeId),
+                            provider = settings.findModelById(settings.translateModeId)?.findProvider(settings.providers),
                             onUpdateReasoningLevel = {
                                 vm.updateSettings { latest -> latest.copy(translateThinkingBudget = it.budgetTokens) }
                             },

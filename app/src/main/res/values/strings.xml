@@ -1872,4 +1872,21 @@
   <string name="chat_message_tool_phone_use_open_app_name">Open app: %1$s</string>
   <string name="chat_message_tool_phone_use_list_apps">List apps</string>
   <string name="chat_message_tool_phone_use_wait">Wait %1$s seconds</string>
+  <string name="setting_page_built_in_tools_route_desc">These tools run on the selected provider. Availability depends on its API route and the model. Image generation is separate from image input and locally executed tools.</string>
+  <string name="setting_page_built_in_tools_search_provider_desc">Use the provider’s web search when supported by this model and account.</string>
+  <string name="setting_page_chatgpt_image_generation_unsupported">The official ChatGPT plan route does not support image generation. Image input and your separate image-generation providers remain available.</string>
+  <string name="setting_page_chatgpt_url_context_unsupported">This ChatGPT route does not provide the Gemini URL context tool. Supported web search and local URL-reading tools remain available.</string>
+  <string name="setting_page_model_search_unsupported">The official model catalog marks web search as unsupported for this model.</string>
+  <string name="setting_page_tool_responses_required">This hosted tool requires the Responses API; the selected connection uses Chat Completions.</string>
+  <string name="setting_page_tool_route_unsupported">The selected provider and API route do not support this hosted tool.</string>
+  <string name="setting_page_tool_provider_required">Select a provider before choosing its hosted tools.</string>
+  <string name="setting_page_chatgpt_tools_migrated_title">ChatGPT tool settings updated</string>
+  <string name="setting_page_chatgpt_tools_migrated_message">Saved hosted-tool options unsupported by the ChatGPT plan route have been turned off so they no longer block text messages. The plan route still does not support native image generation. Image input, local MCP/function tools, other model settings and separate image-generation providers are unchanged.</string>
+  <string name="setting_provider_page_chatgpt_quota_unavailable_title">Remaining plan usage is unavailable in the app</string>
+  <string name="setting_provider_page_chatgpt_quota_unavailable_desc">This connection has no verified source for remaining plan limits, periods or reset times. View ChatGPT Settings → Usage for official details.</string>
+  <string name="reasoning_chatgpt_capabilities_hint">Available levels come from this ChatGPT model’s catalog. Unsupported levels cannot be selected.</string>
+  <string name="reasoning_chatgpt_saved_unsupported">The model catalog does not declare support for the saved “%1$s” level. Choose Auto or an available level; the app will not silently change it.</string>
+  <string name="reasoning_chatgpt_level_unsupported">The ChatGPT model catalog does not declare support for this level</string>
+  <string name="reasoning_chatgpt_auto">Use the model default</string>
+  <string name="reasoning_chatgpt_effort">Request level: %1$s</string>
 </resources>

@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.ui.components.ai
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -38,10 +41,14 @@ import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.RoundedPolygon
 import kotlinx.coroutines.flow.drop
 import me.rerere.ai.core.ReasoningLevel
+import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.supportedChatGPTReasoningLevels
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Idea
 import me.rerere.hugeicons.stroke.Idea01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.ui.components.ToggleSurface
 import me.rerere.ui.icons.ReasoningHigh
 import me.rerere.ui.icons.ReasoningLow
@@ -58,12 +65,17 @@ fun ReasoningButton(
     onlyIcon: Boolean = false,
     reasoningLevel: ReasoningLevel,
     onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
+    model: Model? = null,
+    provider: ProviderSetting? = null,
 ) {
     var showPicker by remember { mutableStateOf(false) }
 
     if (showPicker) {
         ReasoningPicker(
             reasoningLevel = reasoningLevel,
+            supportedLevels = if ((model?.providerOverwrite ?: provider) is ProviderSetting.ChatGPT) {
+                model?.supportedChatGPTReasoningLevels() ?: listOf(ReasoningLevel.AUTO)
+            } else null,
             onDismissRequest = { showPicker = false },
             onUpdateReasoningLevel = onUpdateReasoningLevel
         )
@@ -95,7 +107,12 @@ fun ReasoningPicker(
     reasoningLevel: ReasoningLevel,
     onDismissRequest: () -> Unit = {},
     onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
+    supportedLevels: List<ReasoningLevel>? = null,
 ) {
+    if (supportedLevels != null) {
+        ChatGPTReasoningPicker(reasoningLevel, supportedLevels, onDismissRequest, onUpdateReasoningLevel)
+        return
+    }
     val currentIndex = levels.indexOf(reasoningLevel).coerceAtLeast(0)
     val sliderState = remember {
         SliderState(
@@ -179,6 +196,59 @@ fun ReasoningPicker(
                     )
                 }
             )
+        }
+    }
+}
+
+/** 显示目录声明的真实档位；旧配置不自动降档，用户可以明确改回自动。 */
+@Composable
+private fun ChatGPTReasoningPicker(
+    reasoningLevel: ReasoningLevel,
+    supportedLevels: List<ReasoningLevel>,
+    onDismissRequest: () -> Unit,
+    onUpdateReasoningLevel: (ReasoningLevel) -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(stringResource(R.string.reasoning_picker_title), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(R.string.reasoning_chatgpt_capabilities_hint))
+            if (reasoningLevel !in supportedLevels) {
+                Text(
+                    stringResource(R.string.reasoning_chatgpt_saved_unsupported, reasoningLevel.label()),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            CardGroup {
+                levels.forEach { level ->
+                    val supported = level in supportedLevels
+                    item(
+                        onClick = if (supported) ({ onUpdateReasoningLevel(level) }) else null,
+                        headlineContent = { Text(level.label()) },
+                        supportingContent = {
+                            Text(
+                                when {
+                                    !supported -> stringResource(R.string.reasoning_chatgpt_level_unsupported)
+                                    level == ReasoningLevel.AUTO -> stringResource(R.string.reasoning_chatgpt_auto)
+                                    else -> stringResource(R.string.reasoning_chatgpt_effort, level.effort)
+                                }
+                            )
+                        },
+                        trailingContent = {
+                            RadioButton(
+                                selected = level == reasoningLevel,
+                                enabled = supported,
+                                onClick = if (supported) ({ onUpdateReasoningLevel(level) }) else null,
+                            )
+                        },
+                    )
+                }
+            }
         }
     }
 }

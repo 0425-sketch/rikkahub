@@ -4,8 +4,10 @@ import kotlinx.serialization.Serializable
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.withCompatibleChatGPTTools
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import kotlin.uuid.Uuid
@@ -111,12 +113,19 @@ fun Settings.getAssistantOf(conversation: Conversation): Assistant {
 /** 会话使用的聊天模型；会话开始后内置搜索以会话上固定的开关为准。 */
 fun Settings.getChatModelOf(conversation: Conversation): Model? {
     val assistantModel = findModelById(getStoredAssistantOf(conversation).chatModelId ?: chatModelId)
-    val config = conversation.config ?: return assistantModel
+    val config = conversation.config
     // 固定的模型被删除后退回助手当前的模型，内置搜索也跟随该模型自身的开关
-    val model = findModelById(config.chatModelId) ?: return assistantModel
-    return model.copy(
-        tools = if (config.builtInSearch) model.tools + BuiltInTools.Search else model.tools - BuiltInTools.Search
-    )
+    val pinnedModel = config?.let { findModelById(it.chatModelId) }
+    val model = if (pinnedModel != null && config != null) {
+        pinnedModel.copy(
+            tools = if (config.builtInSearch) pinnedModel.tools + BuiltInTools.Search else pinnedModel.tools - BuiltInTools.Search
+        )
+    } else assistantModel
+    // 旧会话的快照也可能保留已不支持的开关，必须在会话覆盖之后检查实际路由。
+    // 否则无效的内置搜索会阻止客户端 search_web 工具加入请求。
+    return model?.let { resolved ->
+        resolved.findProvider(providers)?.let { resolved.withCompatibleChatGPTTools(it) } ?: resolved
+    }
 }
 
 /**

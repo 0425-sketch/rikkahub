@@ -1,8 +1,26 @@
 package me.rerere.rikkahub.data.datastore
 
+import me.rerere.ai.provider.withCompatibleChatGPTTools
+
 /** 读盘后和每次修改后都要过一遍，保证内存里的设置始终是规整的。 */
 internal fun Settings.normalized(): Settings =
-    withBuiltInDefaults().withoutInvalidReferences().withValuesInRange()
+    withBuiltInDefaults().withoutInvalidReferences().withCompatibleChatGPTBuiltInTools().withValuesInRange()
+
+/** Only saved hosted-tool switches on the ChatGPT plan route are migrated. */
+internal fun Settings.withCompatibleChatGPTBuiltInTools(): Settings {
+    var changed = false
+    val compatibleProviders = providers.map { provider ->
+        val compatibleModels = provider.models.map { model -> model.withCompatibleChatGPTTools(provider) }
+        if (compatibleModels == provider.models) provider else {
+            changed = true
+            provider.copyProvider(models = compatibleModels)
+        }
+    }
+    return if (changed) copy(
+        providers = compatibleProviders,
+        chatGPTToolMigrationNoticePending = true,
+    ) else this
+}
 
 // 补齐缺失的内置提供商/助手/TTS，内置提供商和推荐提供商的描述信息始终以代码里的为准
 internal fun Settings.withBuiltInDefaults(): Settings {

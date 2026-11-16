@@ -35,6 +35,7 @@ import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.ui.components.ai.ModelField
 import me.rerere.rikkahub.ui.components.ai.ModelListSheet
 import me.rerere.rikkahub.ui.components.ai.ModelListState
@@ -188,6 +189,8 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                     trailingContent = {
                         ReasoningButton(
                             reasoningLevel = settings.fastModelReasoningLevel,
+                            model = fastModel.currentModel,
+                            provider = fastModel.currentModel?.findProvider(settings.providers),
                             onUpdateReasoningLevel = {
                                 vm.updateSettings { latest -> latest.copy(fastModelReasoningLevel = it) }
                             },
@@ -233,6 +236,8 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                         trailingContent = {
                             ReasoningButton(
                                 reasoningLevel = settings.memoryModelReasoningLevel,
+                                model = memoryModel.currentModel,
+                                provider = memoryModel.currentModel?.findProvider(settings.providers),
                                 onUpdateReasoningLevel = {
                                     vm.updateSettings { latest -> latest.copy(memoryModelReasoningLevel = it) }
                                 },

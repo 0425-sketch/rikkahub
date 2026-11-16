@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.model
 
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.BuiltInTools
+import me.rerere.ai.provider.ChatGPTModelCapabilities
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
@@ -118,6 +119,51 @@ class ConversationConfigTest {
 
         assertFalse(BuiltInTools.Search in settings().getChatModelOf(disabled)!!.tools)
         assertTrue(BuiltInTools.Search in withoutModelSearch.getChatModelOf(bound)!!.tools)
+    }
+
+    @Test
+    fun `saved built-in search cannot restore tools unsupported by the ChatGPT model`() {
+        val model = modelA.copy(
+            tools = setOf(BuiltInTools.ImageGeneration),
+            chatGPTCapabilities = ChatGPTModelCapabilities(supportsWebSearch = false),
+        )
+        val settings = settings().copy(providers = listOf(ProviderSetting.ChatGPT(models = listOf(model))))
+        val conversation = conversation().copy(config = ConversationConfig(
+            chatModelId = model.id,
+            reasoningLevel = ReasoningLevel.HIGH,
+            enableWebSearch = true,
+            builtInSearch = true,
+        ))
+
+        assertTrue(settings.getChatModelOf(conversation)!!.tools.isEmpty())
+        assertTrue(settings.getAssistantOf(conversation).enableWebSearch)
+        assertEquals(ReasoningLevel.HIGH, settings.getAssistantOf(conversation).reasoningLevel)
+        // Read-time compatibility does not rewrite the conversation or its other preferences.
+        assertEquals(true, conversation.config?.builtInSearch)
+    }
+
+    @Test
+    fun `saved search respects the effective provider override`() {
+        val model = modelA.copy(
+            providerOverwrite = ProviderSetting.ChatGPT(),
+            chatGPTCapabilities = ChatGPTModelCapabilities(supportsWebSearch = false),
+        )
+        val settings = settings().copy(providers = listOf(ProviderSetting.OpenAI(models = listOf(model))))
+        val conversation = conversation().copy(config = ConversationConfig(chatModelId = model.id, builtInSearch = true))
+        assertFalse(BuiltInTools.Search in settings.getChatModelOf(conversation)!!.tools)
+
+        val google = model.copy(providerOverwrite = ProviderSetting.Google())
+        val googleSettings = settings.copy(providers = listOf(ProviderSetting.ChatGPT(models = listOf(google))))
+        assertTrue(BuiltInTools.Search in googleSettings.getChatModelOf(conversation)!!.tools)
+    }
+
+    @Test
+    fun `unstarted and fallback conversations also filter incompatible ChatGPT tools`() {
+        val model = modelA.copy(tools = setOf(BuiltInTools.ImageGeneration))
+        val settings = settings().copy(providers = listOf(ProviderSetting.ChatGPT(models = listOf(model))))
+        assertTrue(settings.getChatModelOf(conversation())!!.tools.isEmpty())
+        val missingModel = conversation().copy(config = ConversationConfig(chatModelId = Uuid.random(), builtInSearch = true))
+        assertTrue(settings.getChatModelOf(missingModel)!!.tools.isEmpty())
     }
 
     @Test

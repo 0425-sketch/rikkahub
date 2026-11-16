@@ -193,3 +193,11 @@
 - 冻结AI实现执行 `:oauth:testDebugUnitTest :ai:testDebugUnitTest :search:testDebugUnitTest` 成功，日志 `/workspace/work/chatgpt-v2-protocol-tests.log`。JUnit XML核对OAuth10/10、AI332/332、搜索22/22，无失败/错误/跳过。
 - 已测包括8项新增最终JSON思考用例、两轮XHIGH工具执行/回传、旧生图开关不阻断文本与看图/函数能力、显式高级非法字段/工具拒绝、原API Key请求行为。全部HTTP账号/目录fixture为合成数据，不能宣称真实服务端已接受全部档位。
 - 本协议阶段随本次提交推送；应用层旧配置迁移、全链路重载、辅助请求、实际runAgent搜索测试正在单独执行，日志 `/workspace/work/chatgpt-v2-app-tests.log`。候选APK尚未构建，原签名阻碍未解除。
+
+## 第二轮阶段：应用测试与独立审阅全部通过
+
+- `:app:testGithubDebugUnitTest` 成功（1分15秒），JUnit XML为572/572，无失败/错误/跳过；日志 `/workspace/work/chatgpt-v2-app-tests.log`。四模块合计936项通过（OAuth10、AI332、搜索22、App572），发布门禁Python另外4项通过。
+- 应用已测：旧开关迁移和一次提示存盘/确认/重启、Provider覆盖隔离、旧会话搜索过滤、runAgent实际客户端搜索执行与完整结果/历史回传、所有七档Settings+Conversation序列化重载到最终HTTP JSON、助手→模型深合并优先级、模型切换拒绝不支持档位、工具循环/压缩档位、快速模型/翻译/OCR/连接测试/记忆回退参数来源。
+- 原版标题/建议使用快速模型和它的独立档位；自动压缩没有独立模型配置，沿原版复用当前会话模型/档位/工具前缀，测试已确认。翻译只在有效ChatGPT路由补带所选模型自身Body/Headers，其他Provider保持原行为。
+- 独立审阅确认App有效Provider/UI/一次提示/DataStore字段/会话覆盖后过滤及其他Provider隔离，未发现新实质问题；源码和测试冻结。普通API Key/Gemini相关原有测试保持通过。真机新的工具/网络与真实账号逐档服务端接受仍未测。
+- 本应用阶段随本次提交推送；接下来提交交付门禁并触发精确提交Actions，同时本地完整ARM64打包核对versionCode198和原证书。签名不匹配不得发布Release或给覆盖安装链接。

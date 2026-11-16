@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
+import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
@@ -123,25 +124,21 @@ fun ProviderConnectionTester(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (model == null) return@TextButton
-                        val provider = providerManager.getProviderByType(internalProvider)
+                        val selectedModel = model ?: return@TextButton
+                        val testRequest = connectionTestRequest(selectedModel, internalProvider)
+                        val provider = providerManager.getProviderByType(testRequest.providerSetting)
                         resetStates()
                         scope.launch {
                             launch {
                                 runCatching {
                                     nonStreamingState = UiState.Loading
                                     val result = provider.generateText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = testRequest.providerSetting,
                                         messages = listOf(
                                             UIMessage.system("You are a helpful assistant"),
                                             UIMessage.user("hello"),
                                         ),
-                                        params = TextGenerationParams(
-                                            model = model!!,
-                                            customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies,
-                                            reasoningLevel = ReasoningLevel.AUTO
-                                        )
+                                        params = testRequest.params,
                                     )
                                     val text = result.message.parts
                                         .filterIsInstance<UIMessagePart.Text>()
@@ -153,17 +150,12 @@ fun ProviderConnectionTester(
                                 runCatching {
                                     streamingState = UiState.Loading
                                     val flow = provider.streamText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = testRequest.providerSetting,
                                         messages = listOf(
                                             UIMessage.system("You are a helpful assistant"),
                                             UIMessage.user("hello"),
                                         ),
-                                        params = TextGenerationParams(
-                                            model = model!!,
-                                            customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies,
-                                            reasoningLevel = ReasoningLevel.AUTO
-                                        )
+                                        params = testRequest.params,
                                     )
                                     flow.collect { chunk ->
                                         if (chunk is StreamChunk.TextDelta) {
@@ -182,18 +174,12 @@ fun ProviderConnectionTester(
                                         execute = { emptyList() }
                                     )
                                     val result = provider.generateText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = testRequest.providerSetting,
                                         messages = listOf(
                                             UIMessage.system("You are a helpful assistant"),
                                             UIMessage.user("Use the get_current_time tool."),
                                         ),
-                                        params = TextGenerationParams(
-                                            model = model!!,
-                                            tools = listOf(testTool),
-                                            customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies,
-                                            reasoningLevel = ReasoningLevel.AUTO
-                                        )
+                                        params = testRequest.params.copy(tools = listOf(testTool)),
                                     )
                                     val message = result.message
                                     val toolCall = message.parts
@@ -226,6 +212,23 @@ fun ProviderConnectionTester(
         )
     }
 }
+
+internal data class ConnectionTestRequest(
+    val providerSetting: ProviderSetting,
+    val params: TextGenerationParams,
+)
+
+/** Freeze the selected model and its effective route for all three asynchronous checks. */
+internal fun connectionTestRequest(model: Model, provider: ProviderSetting): ConnectionTestRequest =
+    ConnectionTestRequest(
+        providerSetting = model.providerOverwrite ?: provider,
+        params = TextGenerationParams(
+            model = model,
+            customHeaders = model.customHeaders,
+            customBody = model.customBodies,
+            reasoningLevel = ReasoningLevel.AUTO,
+        ),
+    )
 
 @Composable
 private fun TestResultItem(

@@ -176,6 +176,9 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
 
         // 赞助提醒
         plain(SPONSOR_ALERT_DISMISSED_AT, Settings::sponsorAlertDismissedAt) { copy(sponsorAlertDismissedAt = it) },
+        plain(CHATGPT_TOOL_MIGRATION_NOTICE_PENDING, Settings::chatGPTToolMigrationNoticePending) {
+            copy(chatGPTToolMigrationNoticePending = it)
+        },
     )
 }
 
