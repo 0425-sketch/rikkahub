@@ -1,5 +1,7 @@
 # RikkaHub Release 附件自动交付
 
+> 本文为旧基线交付记录。下文历史 `RIKKAHUB_RELEASE_TOKEN` / `RIKKAHUB_RELEASE_PAT_DIRECT` 个人令牌已撤销，不再使用或重新配置；新版由 GitHub Actions 自动提供的 `GITHUB_TOKEN` 构建和发布。最新状态以 [ChatGPT OAuth 迁移进度](chatgpt-oauth-progress.md) 为准。
+
 `upload-release-assets.py` 只交付已有 APK 与其 `.sha256` 文件，不运行 Gradle、不改 OAuth、不提交 APK、不创建或发布 Release，也不覆盖已有附件。目标 Release 必须已经发布。
 
 ## 已验证的 GitHub Actions 交付

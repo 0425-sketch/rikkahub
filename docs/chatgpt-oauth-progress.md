@@ -94,3 +94,12 @@
 - 修复已提交推送：`7e30d7d4d0b5e3e5201c8c8407737da51dbeb45b`。
 - 新运行：`https://github.com/0425-sketch/rikkahub/actions/runs/43874333358`，已确认 `in_progress`，head SHA匹配。上一失败记录保留，不复用旧APK。
 - 应用代码与本地876项通过的测试相同；第二次Actions仍需自行完成检查、构建、发布与下载验证。
+- Run `43874333358` / job `133323306038` 已实际完成 Android命令行工具、SDK平台/Build Tools/NDK/CMake安装和签名准备，进入协议/回归测试及完整APK构建；此前 `sdkmanager` 缺失已解决。
+
+## 阶段更新：本地完整APK打包与结构验证通过
+
+- 本地 `:app:assembleGithubDebug` 成功（1分58秒），日志 `/workspace/work/chatgpt-local-apk.log`；未提交二进制。
+- 使用交付脚本 `--verify-only` 实际检查本地ARM64 APK：包名 `me.rerere.rikkahub.chatgpt.debug`，versionCode `197`，versionName `3.2.0-chatgpt`，minSdk26，ABI仅arm64-v8a，签名验证通过。公开元数据 `/workspace/work/local-apk-check/apk-verification.json`。
+- 本地APK为60,843,241字节，SHA-256 `07ed1b7f6cb09fad159082303e9cf6ff87e53044a28ca091514e305a159b6356`；这是本地检查产物，**不是最终Release下载验证结果**，签名也不代表Actions签名。
+- 第二次Actions仍处于测试/构建阶段。运行中日志API尚未生成（404 BlobNotFound），等完成后取完整日志，不重复无效请求。
+- 旧build/release文档已加历史记录提示，明确已撤销PAT不可再使用，最新交付统一指向本进度文件。

@@ -1,5 +1,7 @@
 # 自用 3.2.0 Debug 构建
 
+> 本文保留旧基线构建及真机记录。官方 ChatGPT OAuth 新版的源码、测试、Actions、安装包与下载校验状态统一记录在 [迁移进度](chatgpt-oauth-progress.md)，不要把本文旧 APK 当作新版交付。
+
 开发分支：`custom-3.2.0`。基线为标签 `3.2.0`，提交
 `e033a47d395fe57d16db2144069c3abdb7117547`。
 
