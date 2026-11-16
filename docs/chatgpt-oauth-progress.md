@@ -381,3 +381,8 @@
 
 - Actions43909609310的validate133447603131与signing-state133447603667已success。主用构建job133451279681，runner_id1000000010；备份构建job133451279970，runner_id1000000011，均已in_progress且实例不同。
 - 两个job均checkout确切7cb3b57c9c39bd674a836ffd355c9fe231db803f，依赖/SDK准备后分别只读取指定的一个已持久Secret；签名恢复、实际APK构建及签名核验还未结束，发布尚未开始。独立测试artifact核验和最终APK下载仍待后续完成。
+
+### 两份持久签名已分别恢复，APK构建进行中
+
+- primary133451279681和backup133451279970均已通过Restore only the selected durable signing copy，证明两个新runner分别读到自己的持久Secret并通过实际私钥签名/验签。当前各自完整assemble仍in_progress，尚待两份APK实际包名/证书校验。
+- 本轮测试artifact14246478979已独立下载，109270字节，SHA-256 `ae70a04d252807b6d7ef1a2da538a457406ec28277651347851d1cb1f461dd55` 与GitHub一致。139份XML及实际testcase均984（OAuth10/AI367/搜索22/App585），failure/error/skipped均0；日志证Python34/34及Gradle BUILD SUCCESSFUL in 4m 40s。证据/workspace/work/actions-43909609310/delivery-review/independent-tests.json、validate-complete.log。
