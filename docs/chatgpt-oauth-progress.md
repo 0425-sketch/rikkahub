@@ -1,10 +1,10 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-**当前状态（2026-11-17 Asia/Singapore）：personal.1固定签名APK已交付；正在处理用户真实样本中的生成中统计显示，准备personal.2同包同签名覆盖更新。** 长期签名及恢复副本已安全保存且已实际恢复核验；本次不得重新生成。真实13次请求确认可观缓存读取，当前修复只区分等待统计与终态缺失，保留全部OAuth/工具/思考/搜索/迁移成果。旧签名调查已停止，不再等待配置；具体证据、待办及构建状态见末尾。恢复时先读本文件、核对Git与相关运行结果。
+**当前状态（2026-11-17 Asia/Singapore）：personal.2固定签名更新APK已发布，实际公开下载及与personal.1覆盖身份核验完成。** 最终源码37fba983、Actions43923584665成功，990+34项测试全部通过；两个独立runner恢复原有主/备份签名构建，包名及证书不变，版本199→200。真实13次请求确认85.9%加权缓存读取；已修生成中统计待更新显示，并修复回归揭示的临时回调页面关闭竞态。全部已有授权、缓存、工具及迁移成果保留，不需要重新配置签名。最新链接、数据与证据见末尾；恢复时仍先核对本文件、Git与实际运行结果。
 
-**当前缓存专项重点：** 读取官方 DevKit issue 9 与 OpenClaw issue 197532 及最新评论/关联PR，核对下划线 HTTP 头 `session_id`、旧连字符头 `session-id`、JSON `prompt_cache_key` 的实际请求与服务端回值；不得混用或将第三方命中改善当作本应用真实验证。
+**缓存专项基准已保留：** 此前已调查官方 DevKit issue 9 与 OpenClaw issue 197532，完成下划线 HTTP 头 `session_id` 的稳定会话适配；旧连字符头 `session-id` 与 JSON `prompt_cache_key` 不得混用。当前另有本用户13次真实服务端统计与键稳定证据，见末尾；后续只根据新反馈继续，不重复已完成调查或将第三方命中率当作本应用数据。
 
-**最新真机反馈正在处理：** 已收到用户13次完成请求的脱敏诊断，确认此样本真实缓存读取率85.9%，会话及服务端键稳定。生成中“上下文未知/缓存未知”是未区分等待终态用量的UI文案；正在做最小显示修复并沿固定签名流程交付覆盖更新，详见末尾。
+**最新真机反馈已处理：** 用户13次完成请求的脱敏诊断确认此样本真实缓存读取率85.9%，会话及服务端键稳定。生成中“上下文未知/缓存未知”来自UI未区分等待本轮用量与终态缺失；personal.2已区分待更新/未知/已报告，未用上一轮数字或估算值冒充本轮统计。显示修复已自动化验证并包含在实际下载的新APK中，手机安装后的显示由用户正常使用确认。
 
 ## 目标、范围与验收
 
@@ -462,3 +462,20 @@
 ### 两个固定签名构建成功，发布与公开下载门禁运行中
 
 - 主用133501686982与备份133501687108均success，从各自已保存Secret恢复并完成实际APK构建。publisher job133506099120已进入核对两份实际APK、发布并下载验证的步骤，source仍37fba983。root将随后独立再下载并对照personal.1实际APK验证覆盖身份；目前尚未提前给出下载链接。
+
+## personal.2交付完成：实际下载和覆盖更新身份已验证
+
+- Actions43923584665最终success，确切源码37fba983cae83bf2c42dc77695c2b796edaabbd0；主用133501686982/runner1000000017、备份133501687108/runner1000000018、publisher133506099120均success。两干净实例分别恢复既有主/备份签名并实际构建；未重新生成私钥，未要求setup Secret或重新授权。
+- Release：https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.2.0-personal-37fba983cae8-43923584665-1 ，目标source37fba983、独立Pre-release，旧Release保留。
+- ARM64 APK：https://github.com/0425-sketch/rikkahub/releases/download/custom-3.2.0-personal-37fba983cae8-43923584665-1/rikkahub-3.2.0-personal.2-37fba983cae8-arm64.apk 。包名me.rerere.rikkahub.personal，versionCode200/versionName3.2.0-personal.2，minSdk26，ABI仅arm64-v8a，60,926,637字节。
+- APK SHA-256 `0b8b59d3d59d3c48995f6a2095a2a25bb00fa6f83d08dcb7858e76072f9adef3`；证书SHA-256仍 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`。root已无令牌公开下载APK/.sha256/provenance/双恢复proof，并核对字节数、digest、apksigner/aapt2、source、GitHub实际job/runner及固定pin；证据/workspace/work/release-43923584665/independent-delivery-verification.json。
+- root另对上次实际下载的personal.1 APK与新APK分别重新apksigner验签、aapt2读取包名/版本，确认同包同证书且199→200。证据同目录overlay-update-verification.json。可直接覆盖当前“RikkaHub 自用”，保留聊天及登录，不需要再次备份迁移/重新授权；没有声称已替用户在实体手机安装。
+- 本次最终行为：本轮生成中统计未返回→“统计待更新”；终态仍缺失→“未知”；真实报告数值包括0始终保留；工具循环不借用上轮统计。另修临时OAuth回调服务优雅关闭窗口，避免页面截断，授权/刷新/缓存协议不变。原所有功能及能力边界保留。
+- 真实缓存结论仅限用户样本：13/13终态统计完整，合计input1,399,570/cached1,202,560（85.9235%），末次199,754/175,872（88.0443%），后者与截图175.9K一致；三类会话/缓存键稳定。未记录原始日志到仓库，未宣称显示修复提升命中率，也未以样本证明所有使用条件下的缓存表现。
+- 本轮990项模块测试及34项Python门禁本地和CI均通过，公开新APK下载校验已完成。源码与交付流程已提交推送；本最终进度随后提交，实际文档HEAD以Git为准。下一次继续应从用户新的真机反馈开始，不重做已完成修复或旧签名调查。
+
+### 最终独立交付复核
+
+- Release ID447409537；APK asset755903043，SHA文件755902871，provenance755902921，恢复proof755902999，全部uploaded。标签/源码/版本与上文一致。
+- delivery_review独立核对两job实际apksigner/aapt2日志，两个Worker ID与runner_id不同，实际包名/证书/版本/ABI/minSdk一致；两APK字节数和SHA也相同。公开交付artifact14255503003，2228字节，SHA-256 8f55ab9ddd19119cc2197afd85f39d19c3cb20acdc40e947ae0e7676d33f3d7f与GitHub一致，四份公开JSON与实际jobs/metadata吻合。证据/workspace/work/actions-43923584665/delivery-review/independent-signing-delivery.json以及primary/backup/publish-complete.log。
+- publisher本轮明确未提供一次性setup token，正常跳过其清理，不改变两个长期签名Secret；证明后续更新无需重复设置。root最终公开下载及旧新版覆盖身份核验亦均通过，所有交付条件已满足。
