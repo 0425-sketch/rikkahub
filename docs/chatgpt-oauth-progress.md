@@ -364,3 +364,10 @@
 - 用户已明确回复“已设置”。恢复时已先读本进度、核对本地与远端custom-3.2.0同为01cebc168d5b93b4c9fff4ea167803b040acbe41且工作区干净；上次984+34项云端验证及bootstrap权限失败记录均与实际Actions一致。
 - 新增bootstrap请求文件触发全新run，读取用户配置的新Secret快照。产品源码与已通过验证的cbf3552b/eebc76d1保持一致；未重新调查旧签名、未向用户索取令牌值。
 - 下一步：核对bootstrap公开回执与持久化成功→固定公开证书→新run分别恢复主/备份构建→Release及APK实际下载验证。当前仍不能声称长期签名已保存或新版APK已交付。
+
+## 长期签名已安全保存，开始独立恢复验证
+
+- bootstrap源码2ed22c4e449346d41d7b46aea78de4d97cd03afe，Actions43909232185（https://github.com/0425-sketch/rikkahub/actions/runs/43909232185），job133446261397成功。首次生成长期签名，backup于2026-11-16T16:36:18Z、primary于16:36:19Z保存到仓库加密Secrets；两个副本均含私钥及必要密码，未输出或上传私密材料。
+- 实际下载公开artifact14246827289，772字节，ZIP SHA-256 `3a1685ad2026b9cb630257bd856761b648a5d173c94c88c20f2cc9bcc68e3839` 与GitHub digest一致；仅含signing-identity.json和signing-persistence.json。保存/workspace/work/actions-43909232185/。
+- 公开证书SHA-256 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`，包名me.rerere.rikkahub.personal；已核对两回执一致并固定docs/chatgpt-personal-signing.json。此公开指纹不是私钥。副本为同仓库vault内独立Secret，仍不宣称异地灾备。
+- 回执restoration_verified:false准确表示尚未完成实际恢复。下一提交只固定公开pin并触发全新main workflow，使排队快照能读取刚保存的两Secret；两个独立runner实际构建和发布门禁通过前不交付APK。
