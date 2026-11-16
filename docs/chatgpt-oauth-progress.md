@@ -1,5 +1,7 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
+**交付已完成：新版ARM64 APK已发布，并由Actions和主工作区分别从公开Release完整下载校验通过。** 最终源码为 `7e30d7d4d0b5e3e5201c8c8407737da51dbeb45b`；之后的提交仅保存进度/历史文档说明。恢复时先核对本节及末尾验收记录，不重做已完成工程。
+
 ## 目标、范围与验收
 
 - 仓库：`0425-sketch/rikkahub`，仅开发分支 `custom-3.2.0`；原始基线 `3.2.0` / `e033a47d395fe57d16db2144069c3abdb7117547`。
@@ -103,3 +105,24 @@
 - 本地APK为60,843,241字节，SHA-256 `07ed1b7f6cb09fad159082303e9cf6ff87e53044a28ca091514e305a159b6356`；这是本地检查产物，**不是最终Release下载验证结果**，签名也不代表Actions签名。
 - 第二次Actions仍处于测试/构建阶段。运行中日志API尚未生成（404 BlobNotFound），等完成后取完整日志，不重复无效请求。
 - 旧build/release文档已加历史记录提示，明确已撤销PAT不可再使用，最新交付统一指向本进度文件。
+
+## 最终验收：Release下载验证通过
+
+- 分支：`custom-3.2.0`；全部实现已提交推送。交付源码：`7e30d7d4d0b5e3e5201c8c8407737da51dbeb45b`。本记录完成前的文档HEAD为 `99a069b2`，最终记录随本次文档提交推送；实际当前HEAD以 `git log -1` 和远端分支为准。
+- 已测试：本地OAuth 10项、AI 317项、应用549项（合计876）全通过；完整本地assemble通过。Actions在干净runner重新完成协议/回归测试、完整构建和发布，`BUILD SUCCESSFUL`（7分44秒）。
+- 成功Actions：<https://github.com/0425-sketch/rikkahub/actions/runs/43874333358>，job `133323306038`，verification artifact `14229323469`。完整日志 `/workspace/work/actions-43874333358/job-133323306038-complete.log`。
+- Pre-release ID：`447075187`；独立标签：`custom-3.2.0-chatgpt-7e30d7d4d0b5-43874333358-1`。
+- Release：<https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.2.0-chatgpt-7e30d7d4d0b5-43874333358-1>
+- **已验证APK**：<https://github.com/0425-sketch/rikkahub/releases/download/custom-3.2.0-chatgpt-7e30d7d4d0b5-43874333358-1/rikkahub-3.2.0-chatgpt-7e30d7d4d0b5-arm64.apk>
+- SHA-256文件：<https://github.com/0425-sketch/rikkahub/releases/download/custom-3.2.0-chatgpt-7e30d7d4d0b5-43874333358-1/rikkahub-3.2.0-chatgpt-7e30d7d4d0b5-arm64.apk.sha256>
+- 下载后大小：**60,843,249字节**；SHA-256：`580225a0947e2d243aff2ab6a24ddda264e14f587a1acb7015f6d3978d3426aa`。
+- 下载后签名验证通过；证书SHA-256：`369f5d9de364514a92337b02efc50ce5c35bfb53753c325286c0efcaabc5b497`。
+- 下载后包名 `me.rerere.rikkahub.chatgpt.debug`；versionCode `197`；versionName `3.2.0-chatgpt`；minSdk `26`（Android8.0）；仅 `arm64-v8a`。**独立安装，不覆盖旧自用版，不要求卸载或清数据。**
+- Actions已做公开下载验证。主代理再次无令牌下载APK并独立复核大小、SHA-256、签名、包名/版本/ABI及公开校验文件，成功证据 `/workspace/work/release-43874333358/verified-delivery.json`。下载的是真正新Release包，不是本地包或旧基线产物。
+- 未提交二进制、密钥或令牌；普通artifact仅测试报告及公开验证信息。旧版本/旧标签保留，未改master、未强推、未改写历史。
+
+### 明确未验证/未完成项
+
+- 用户真实ChatGPT登录、验证码、同意授权、实际套餐资格/额度调用、真机聊天和工具调用仍由用户安装后验证；模拟协议测试不能替代该验证。
+- Actions secrets权限受限，签名安全持久化尚未完成，最终构建 `signing_persistence=this-build-only`。本次APK可安装，但不承诺后续构建能够同签名覆盖升级；不影响本次独立安装交付。
+- 当前无待修复的已知测试失败、无待构建/待上传/待下载校验事项。用户下一步：下载安装→添加/进入ChatGPT提供商→登录授权→刷新并选择模型发消息→启用客户端工具并测试一次调用。
