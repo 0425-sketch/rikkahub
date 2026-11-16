@@ -60,3 +60,11 @@ Java HTTPS 客户端及 Gradle 均可解析。未更换仓库或依赖版本，�
 APK SHA-256 为 `6f93a66b393c050b61ed6001c0dbf3c259997ce786418a4f4e7137cf7b2ceb4d`。
 APK 已由交付提交 `99475b78e68ab0f6d30a0ea2ce0fd2b5fbbfc156` 推送到开发分支；
 保留该历史，不强制改写。此次仅更新验证记录，不重新构建 APK。
+
+## Release 附件自动交付
+
+已发布的测试 Release 为 `custom-3.2.0-test`，ID `446959646`。
+使用 `tools/upload-release-assets.py` 复用已有 APK 与 SHA-256 文件。
+一次性安全凭据配置、上传和下载验证命令见
+[Release 自动交付说明](custom-3.2.0-release.md)。
+此入口不重建 APK，也不修改 OAuth。
