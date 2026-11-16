@@ -2,6 +2,26 @@
 
 `upload-release-assets.py` 只交付已有 APK 与其 `.sha256` 文件，不运行 Gradle、不改 OAuth、不提交 APK、不创建或发布 Release，也不覆盖已有附件。目标 Release 必须已经发布。
 
+## 已验证的 GitHub Actions 交付
+
+2026-11-16 已通过 `.github/workflows/upload-existing-apk.yml` 完成 APK 上传，
+并从公开 Release 下载后核对大小与 SHA-256。运行记录：
+https://github.com/0425-sketch/rikkahub/actions/runs/43867882083
+
+此流程在 GitHub 托管 runner 上运行，使用自动提供的、仅限本仓库的 `GITHUB_TOKEN`
+和 `contents: write` 权限，不使用 Codex 云环境中的 PAT 或 HTTP 密钥注入。
+它复用已审阅提交 `4bd01157b0c8d32a9a1aac4e4266208c2a472a4a` 中的上传脚本与现有 APK，
+只补充缺失的附件，不覆盖同名文件；上传前后均检查内容。
+
+当前工作流固定交付本次基线测试包，**不会自动构建后续版本**。
+后续新版的构建与产物交付应接入 GitHub Actions；本次未配置新版自动构建，也未改动签名。
+
+APK：
+https://github.com/0425-sketch/rikkahub/releases/download/custom-3.2.0-test/app-github-arm64-v8a-debug.apk
+
+下面保留原有云端上传配置供排查。该路径曾在 APK 上传时被 Codex
+`codex-secret-uploads.github.com` 凭据集成层拒绝，不应再为本测试包重复调整令牌或白名单。
+
 ## 一次性凭据设置
 
 在当前云环境的**安全凭据**设置中保存令牌，不要粘贴进聊天、脚本、仓库或命令行参数。
