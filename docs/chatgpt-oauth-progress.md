@@ -262,3 +262,27 @@
 - 用户最新原文：“不确认，要同包同签名”。该决定优先于此前提出的并存安装建议；已撤下该建议，禁止将放宽要求作为默认下一步。
 - 已核对当前分支custom-3.2.0，起始HEAD为ddb5c1cb，工作区干净；此前936项测试、Actions构建和签名失败证据仍有效。本次仅更新约束记录，未修改产品代码、签名、包名或版本，未触发新的构建/发布。
 - 已完成修复与测试成果保留在远端。剩余唯一可接受的APK交付路径：原私钥可恢复时核对证书，再沿现有Actions构建发布并下载验证；现有证据未发现该私钥的可用副本，不能承诺可恢复，也不重复已确认失败的构建或密钥查找路径。
+
+## 用户要求继续实际恢复：扩大原签名来源审计
+
+- 用户要求立即继续处理，硬约束仍为同包同签名。开始审计此前尚未充分证明的密钥来源/恢复边界，不重跑无密钥的APK构建，也不改安装方案。
+- 分工：主代理检查当前可访问文件系统中的keystore候选及环境安全绑定；独立代理核对原APK公证书生成时间、AGP实际签名路径及runner类型；另一代理核对原run全部artifact/cache/签名配置引用及官方恢复能力。所有结论回填本文件，长报告在 `/workspace/work/signing-recovery-audit/`，不记录密钥内容或凭据。
+- 当前环境status实际返回secrets/runtime_variables/outbound_identities均为空；无需用户提供账号凭据。代码仍为已验证的b9f79522，936项测试成果保留。
+
+### 原签名扩大取证：已确认的新事实
+
+- 直接从原APK提取公开证书：RSA2048，notBefore为2026-11-16 13:25:43 UTC，恰在首次CI签名前；不是runner镜像内置固定debug key。APK只有一个v2 signer，没有备用签名或v3轮换lineage。
+- 独立核对实际AGP9.4.0/sdk-common32.4.0字节码：签名私钥由Java随机KeyPairGenerator生成，createNewStore只写目标keystore，没有备份分支；相同源码、时间、别名或默认密码不能重现原私钥。
+- 原runner为GitHub托管Azure机器，不是可重新连接的self-hosted runner。默认密钥路径/home/runner/.android/debug.keystore由AGP规则及无覆写推断，日志未直接打印绝对路径，保留这一证据边界。
+- 完整分页远端清单：原run仅1个公开测试report artifact；全repo仅2个report artifact；Actions仅Gradle modules-2/wrapper与pnpm两个cache。原日志13:26:01清理密钥，13:26:04才开始Gradle cache打包，pnpm更晚，排除清理前缓存保存。
+- environments API成功返回total_count=0，原repo为个人账号；没有漏掉仓库environment或组织级签名绑定。当前连接工具没有额外签名库/runner快照恢复接口。
+- 当前可访问/workspace、/tmp、/home、/root、/opt、/mnt、/var/lib的文件名候选扫描，只有已知不匹配的本地Android debug keystore、Gradle配置缓存加密keystore、CMake模板与系统Java信任库，未发现原签名副本；有4个不可读目录，不能将可访问范围的扫描夸大为全局证明。原密钥生成在另一台托管runner上。
+- 独立报告 `/workspace/work/signing-recovery-audit/signer-forensics.md`；文件候选只记录路径/大小/mtime，不记录私钥或密码。没有修改产品代码、触发重建、创建Release或上传异签名APK。
+
+### 扩大恢复审计完成：目前仍无可恢复来源
+
+- 实际下载原run的artifact14229323469并验证ZIP摘要与GitHub一致；121个文件为119份JUnit XML和2份公开JSON，完全不含keystore、签名私钥或APK。未下载不相关的大型依赖cache，已由实际路径与清理先后证据排除其作为该新生成key的备份。
+- 官方Android文档本轮HTTP200复核：<https://developer.android.com/studio/publish/app-signing> 明确未使用Play App Signing且丢失app signing key时无法更新应用；<https://developer.android.com/tools/apksigner> 的签名需要私钥，rotate也需要old-signer，不能用复制证书或换key轮换规避原私钥缺失。
+- 官方GitHub文档 <https://docs.github.com/en/actions/concepts/runners/github-hosted-runners> 与安全说明确认托管job使用新VM/临时隔离环境；当前可用API未发现恢复该已结束runner文件的功能。没有将“未找到恢复API”夸大为GitHub内部绝不存在恢复可能；任何未配置的外部私人备份或平台内部运维存储均不在当前可访问范围内，也没有证据表明存在。
+- 本次实际完成文件系统候选扫描、环境安全绑定、远端artifact全清单及原artifact下载、cache全清单与打包时序、repo environments、runner类型、原APK签名与AGP随机生成实现、官方签名/轮换恢复规则的交叉审计。独立摘要 `/workspace/work/signing-recovery-audit/remote-summary.md`。
+- 结果：当前可用资源中仍没有原私钥或合法的同签名恢复路径。不是等待用户确认或工程排错；没有需要用户继续操作的已知步骤。保留同包同签名条件和已通过936项测试的修复成果，交付仍未完成，不能承诺可恢复或用新key冒充同签名。
