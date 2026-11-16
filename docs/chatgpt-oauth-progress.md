@@ -1,6 +1,6 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-**当前任务：第二轮真机反馈修复进行中。** 第一轮ARM64 APK已完成发布和双重下载校验，用户现已确认最新版官方ChatGPT OAuth和正常聊天可用。保留这些成果，不重做OAuth。第一轮交付源码为 `7e30d7d4d0b5e3e5201c8c8407737da51dbeb45b`，本轮从已推送 `e4fcd0bdbbb857f955fcaac0c73700513c6b1eab` 开始；恢复时先读末尾第二轮记录并核对Git/Actions。
+**当前任务：第二轮修复源码、936项测试和本地/Actions构建完成；覆盖安装交付仍被原签名私钥缺失阻断，未创建新Release，未交付新APK下载链接。** 用户已真机确认第一轮官方OAuth和普通聊天可用，相关成果已保留。最新产品源码 `b9f795224c260bcb0b3de7cd77c115eb188cb2f6`；全部代码已推送 `custom-3.2.0`，末尾记录最终Actions/证书/未完成事项。恢复时先读取本文件末尾并核对Git、Actions与Release，不能把构建成功当作交付完成。
 
 ## 目标、范围与验收
 
@@ -220,3 +220,38 @@
 - 本地候选APK：60,872,297字节；SHA-256 `7a82ca16ee9ed337670e2aeb32c515845a29545bf0a0b6a4132d6de70cafa702`；包名 `me.rerere.rikkahub.chatgpt.debug`，versionCode198，versionName `3.2.0-chatgpt.1`，minSdk26，仅arm64-v8a。
 - APK签名本身有效，但证书 `25eba60a12a309f294a68f93cd9b77966827e3b07b6ab742d11aad49f7d85289` 与已安装版证书不同，`upgrade_certificate_matches=false`。此文件是内部候选，不能作为覆盖升级交付；未上传/创建Release，未要求用户卸载或清数据。
 - Actions `43888601864` / job `133373383281` 已通过exact源码与4项发布门禁测试、SDK准备，现进行全套测试+完整打包。签名配置步骤成功仅说明流程执行，不代表原key存在；等待最终证书校验事实。
+
+## 原始3.2.0逐项对照及最终客户端映射
+
+| 对照项 | 保留与本轮必要调整 |
+| --- | --- |
+| ReasoningLevel序列化与档位 | 原版off/auto/low/medium/high/xhigh/max值完全保留；仅ChatGPT使用目录限制与最终JSON一致性校验。 |
+| AUTO/显式档位 | AUTO仍省略effort；OFF→none，LOW→low，MEDIUM→medium，HIGH→high，XHIGH→xhigh，MAX→max；除AUTO外须目录声明。旧未支持OFF不再悄悄省略。 |
+| 参数优先级 | 原版助手Body→模型Body深合并顺序保留；会话快照覆盖助手的聊天模型/档位。ChatGPT在最终合并后验证，不允许高级Body悄改已选档位。 |
+| 系统提示与历史 | 原版developer消息、buildMessages、加密推理元数据、function_call_output序列化复用；新HTTP路由坚持完整input历史，禁止previous_response_id。 |
+| 客户端搜索/MCP/functions | 原版参数schema、strict:false、客户端执行、结果文本、UI/多轮历史保持；仅官方路由要求的namespace包装与解包适配。 |
+| 内置工具 | 依据有效Provider/模型过滤ChatGPT旧不兼容开关；Google原有三项与API Key Responses原能力保留。显式高级非法托管工具有准确错误。 |
+| stream/store/采样 | 原版ChatGPT generateText继续聚合SSE；新SIWC最终stream:true/store:false，普通不支持参数省略，高级显式不兼容字段拒绝；不照搬Codex身份头或旧后台参数。 |
+| summary/encrypted/cache | 摘要依据目录；encrypted_content在自定义include后仍保留；原sessionId→prompt_cache_key保留，允许合法自定义缓存键但不承诺缓存命中。 |
+| 辅助请求 | 标题/建议继续快速模型独立档位；压缩复用当前会话；仅ChatGPT修正OCR无选择档位、翻译模型自定义字段、记忆回退档位。 |
+| Bing网络 | 原搜索参数/选择器/返回结构保持，修复Jsoup直连绕过共享HTTP配置，原始上游不相关结果不伪造过滤或替换服务。 |
+
+- 上表的最终请求映射已通过模拟HTTP与持久化测试；用户已真机确认官方登录/普通聊天可用，但本轮全部档位的真实账号服务端接受仍未验证，不能以思考耗时或回答风格代替。
+
+## 第二轮最终工程状态：验证完成，覆盖交付阻断
+
+- 分支 `custom-3.2.0`；产品源码提交 `b9f795224c260bcb0b3de7cd77c115eb188cb2f6`，此前搜索/AI/App阶段分别 `274eb04d` / `2b81be52` / `59e7bc7b`；后续仅主进度记录更新。最后文档HEAD由本次提交生成，以git log与远端分支核对。
+- 本地：OAuth10、AI332、搜索22、App572（合计936）全部通过；Python发布门禁4项通过；完整ARM64 assemble成功；文案CLI/XML、workflow YAML、脚本语法、git diff --check通过。
+- **Actions实际结果**：<https://github.com/0425-sketch/rikkahub/actions/runs/43888601864>，job `133373383281`，exact source与上述产品SHA一致。测试及ARM64打包步骤成功，日志 `BUILD SUCCESSFUL in 8m 57s`；仅发布前原签名校验步骤失败，实际错误 `UPGRADE_SIGNING`。没有重跑已确认缺失原key的路径。
+- 已实际下载核对verification artifact `14235619229`（104,782字节），ZIP SHA-256 `cec7fc1997d4e859eaabe8d22d47d8e66b60094e7a0477162a9adb656ba20626` 与GitHub记录一致。131个JUnit XML再次独立核对936项，failure/error/skipped均0。文件 `/workspace/work/actions-43888601864/verification.zip`；公开脱敏日志 `job-133373383281-public.log` 与summary同目录。
+- 云端候选APK元数据：包名 `me.rerere.rikkahub.chatgpt.debug`，versionCode198，versionName `3.2.0-chatgpt.1`，minSdk26，仅arm64-v8a，60,872,301字节，SHA-256 `3ca489e75559ac60de1276be411a78ab4c862769aa249f7f66dc7e9392254bd2`。云端证书 `9ecc0935ffdf7c616fee46caf4b31f27f57e505fe3be7bcb66db3924cbd07a9e`，与已安装197版原证书 `369f5d9de364514a92337b02efc50ce5c35bfb53753c325286c0efcaabc5b497` 不同。`upgrade_certificate_matches=false`。
+- **尚未完成交付**：未创建第二轮Release、未上传APK、没有新版APK公开下载验证。下载验证的是公开测试/元数据artifact，不是APK；不能混淆。新云端临时签名已正常清理；artifact不含APK或任何签名私钥。原版Release保持不变，未要求用户卸载、清数据或改配置。
+- 阻碍原因已查证：上一轮一次性GitHub runner签名私钥已删除且未安全持久化，公开APK证书不能恢复私钥；现有工作区和可查存储无原key，原secrets能力受限。此次Actions再次证明没有匹配原证书的固定签名。此限制无法通过修改versionCode、安装命令或移除门禁解决。
+- 用户当前硬约束不允许换包名/签名/安装方式。下一步只能等待用户明确调整安装约束后，再准备可与现有版并存的交付方案；未经新授权不得发布错误签名包作为覆盖更新，不得建议卸载来绕过。
+
+### 第二轮功能结论与仍待验证
+
+- **已修复设置与聊天兼容，套餐原生生图尚不支持**：旧ChatGPT不兼容内置工具开关迁移并一次提示；UI按有效Provider/路由/目录限制；高级显式非法工具准确拒绝；看图、客户端MCP/functions、其他Provider和独立生图方式保留。依据官方SIWC Preview限制本轮仍明确禁止image_generation。
+- **应用内实时剩余额度未实现**：已查官方SIWC/Responses/限流/用量文档及原版wham/Codex来源，未建立适用新凭据且明确套餐/应用范围、周期、reset的可靠数据源。没有手机真实授权HTTP headers/events可检验，不能把文档或合成数据当实际余额。应用显示准确说明和官方管理用量入口，无伪造百分比/刷新/缓存。
+- **搜索**：截图对应客户端search_web，原版schema/执行/UI未被OAuth迁移改变；修复Bing绕过共享网络配置并准确区分错误。云端完整查询已到Bing，但原始HTML含不相关结果，未复现手机空结果。真实手机网络/代理下的搜索仍待后续可安装版本复测，不宣称彻底修复上游结果质量。
+- **思考**：七档客户端最终JSON映射、保存恢复、自定义冲突、多轮工具、辅助模型/档位来源均通过测试；除AUTO外只有目录声明才可选，未声明的旧选择保留并提示。真实账号服务端逐档接受仍未验证，不以回答风格或耗时判定。
