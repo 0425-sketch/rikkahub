@@ -219,7 +219,9 @@ class OAuthLoopbackCallbackServer(
 
     private suspend fun stopServerIfIdle() {
         if (callbacks.isEmpty()) {
-            server?.stopSuspend(gracePeriodMillis = 0, timeoutMillis = 1_000)
+            // CIO drains response channels to sockets asynchronously. Let in-flight responses
+            // finish before forced cancellation so session closure cannot immediately truncate them.
+            server?.stopSuspend(gracePeriodMillis = 500, timeoutMillis = 1_000)
             server = null
             redirectUri = null
             localizedContext = null

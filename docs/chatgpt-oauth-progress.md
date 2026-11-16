@@ -432,3 +432,17 @@
 
 - 本次完整源码及测试已提交并推送338b99f299d883c0ad3b110177df111effc1b781，分支custom-3.2.0；工作区代码干净。Actions43922127192（https://github.com/0425-sketch/rikkahub/actions/runs/43922127192）已读取该确切commit并开始，待989项模块测试+34项Python门禁以及两个固定签名恢复构建。
 - delivery_review负责独立测试artifact及双恢复记录核验；root负责Release实际APK公开下载与旧personal.1同包同证书比较。当前未创建personal.2 Release，不能以此前成功run代替本次结果。此后文档提交不会改变本次构建source SHA。
+
+### 首次personal.2云端回归揭示既有回调关闭竞态，发布已阻止
+
+- Actions43922127192 source338b99f2的validate133491872289失败；Python34通过，但OAuthLoopbackCallbackServerTest成功state回调测试失败，OAuth10项1失败，后续全模块未完成。签名/发布正确skipped，无新Release。完整日志/workspace/work/actions-43922127192/delivery-review/validate-complete.log；artifact14254801362及XML已独立下载核验。
+- 具体证据：wrong-state的400请求先成功，matching-state HTTP在test:31/32先unexpected end of stream读取响应头，OkHttp随后重连已关闭端口遭IPv4/IPv6 connection refused。失败项耗时0.048秒，排除2秒awaitCallback超时；同suite官方callback路径测试通过。产品handleCallback的respondText返回后complete唤醒消费者，test立即close，stopSuspend(gracePeriodMillis=0)可能抢在响应flush前中断连接。不是用户SIWC缓存失败，也不能将此解释为单纯IPv6或增加测试等待超时。
+- root第一次本地OAuth命令为UP-TO-DATE，不能算新执行证据；已明确使用测试task的--rerun执行实际复测。auth_test_timeout正只读核对当前Ktor CIO关闭语义；必要时仅修临时回调服务器优雅关闭并保留现有并发close测试，不改授权、刷新、缓存或工具协议。不以盲重跑直到绿灯替代定位。下一新提交/新run会重新全量验证，仍复用固定签名。
+
+### 回调关闭竞态已按底层实现修复，重新全量验证
+
+- 已核对精确版本Ktor CIO 3.6.1源码：respondFromBytes关闭的是内部channel，ServerPipeline的独立writer随后才copyTo(socket)并flush；stopSuspend(grace=0)直接cancel serverJob，存在截断窗口。源码私有缓存/workspace/work/ktor-cio-source。必要产品变更仅stopServerIfIdle的grace从0改500ms，保留原总timeout1000ms；启动失败cleanup仍0，不改变回调state校验/授权/凭据/请求协议。这是正常优雅关闭窗口，不是测试sleep或放宽HTTP断言。
+- 保留原并发awaitCallback→close测试，新增1项覆盖localhost及127.0.0.1各6次立即关闭、禁止HTTP自动重试、检查200与完整HTML及正确state/code。前对照grace0本地12次也通过（/workspace/work/personal2-loopback-before-drain.log/.xml），不宣称本地稳定必败；真实失败证据来自CI。改后OAuth11/11实际通过，新测试12次用时6.162秒，旧matching-state0.518秒，日志personal2-loopback-after-drain-oauth.log。
+- 发布说明已纳入这一关闭时序修复，版本仍200/personal.2，因为失败run从未发布。Python最终34/34再次通过（personal2-python-tests-final.log）。root正在对OAuth/AI/Search/App各测试task显式--rerun，预期990项，再提交推送新确切source并触发新Actions。
+
+- 最终本地显式全量执行完成：OAuth11、AI367、Search22、App590，合计990/990，failure/error/skipped均0；BUILD SUCCESSFUL in 28s，四个测试task实际执行（非UP-TO-DATE）。日志/workspace/work/personal2-full-regression-final.log。Python34/34同时有效。随后提交回调关闭修复、回归测试与发布说明，推送触发新Actions；前次失败run43922127192保留，不作为交付。

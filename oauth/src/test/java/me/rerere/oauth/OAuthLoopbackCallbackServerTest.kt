@@ -60,6 +60,39 @@ class OAuthLoopbackCallbackServerTest {
         }
     }
 
+    @Test
+    fun `immediate session close flushes complete callback responses without retry`() = runBlocking {
+        val noRetryClient = httpClient.newBuilder().retryOnConnectionFailure(false).build()
+        for (host in listOf("localhost", "127.0.0.1")) {
+            repeat(6) { attempt ->
+                val state = "state-$host-$attempt"
+                val server = OAuthLoopbackCallbackServer(redirectHost = host)
+                val session = server.openSession(state)
+                try {
+                    val callbackAndClose = async(Dispatchers.IO) {
+                        session.awaitCallback(2.seconds).also { session.close() }
+                    }
+                    withContext(Dispatchers.IO) {
+                        noRetryClient.newCall(Request.Builder()
+                            .url("${session.redirectUri}?code=auth-code&state=$state")
+                            .build()).execute().use { response ->
+                            assertEquals(200, response.code)
+                            val html = response.body.string()
+                            assertTrue(html.contains("Authorization complete"))
+                            assertTrue(html.trimEnd().endsWith("</html>"))
+                        }
+                    }
+                    val callback = callbackAndClose.await()
+                    assertEquals("auth-code", callback?.code)
+                    assertEquals(state, callback?.state)
+                    assertFalse(callback?.error != null)
+                } finally {
+                    session.close()
+                }
+            }
+        }
+    }
+
     private fun execute(url: String) = httpClient.newCall(
         Request.Builder()
             .url(url)
