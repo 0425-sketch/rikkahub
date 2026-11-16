@@ -1,4 +1,5 @@
 import com.android.build.api.dsl.Packaging
+import com.android.build.api.variant.BuildConfigField
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import com.google.gms.googleservices.GoogleServicesTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -51,6 +52,16 @@ android {
     }
 
     signingConfigs {
+        // Optional secure CI injection. Never check a keystore or its passwords into Git.
+        // Without these variables the isolated test variant uses Android's debug signer.
+        providers.environmentVariable("CHATGPT_TEST_KEYSTORE").orNull?.let { keystorePath ->
+            create("chatgptTest") {
+                storeFile = file(keystorePath)
+                storePassword = providers.environmentVariable("CHATGPT_TEST_STORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("CHATGPT_TEST_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("CHATGPT_TEST_KEY_PASSWORD").get()
+            }
+        }
         create("release") {
             val localProperties = Properties()
             val localPropertiesFile = rootProject.file("local.properties")
@@ -117,7 +128,7 @@ android {
         buildConfig = true
     }
     sourceSets {
-        getByName("androidTest").assets.srcDirs("$projectDir/schemas")
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
     }
     androidResources {
         generateLocaleConfig = true
@@ -164,6 +175,20 @@ baselineProfile {
 // baselineprofile 插件按 release 复制出 nonMinifiedRelease 时只关掉 isMinifyEnabled，关不掉 optimization，
 // 不手动关的话生成用的包会被 R8 内联、合并类，profile 里记下的是优化后的类和方法
 androidComponents {
+    onVariants(selector().withBuildType("debug").withFlavor("distribution" to "github")) { variant ->
+        // The original personal debug signing key is unavailable. Keep its data intact
+        // by installing the ChatGPT migration test build as a separate application.
+        variant.applicationId.set("me.rerere.rikkahub.chatgpt.debug")
+        variant.outputs.forEach { output ->
+            output.versionCode.set(197)
+            output.versionName.set("3.2.0-chatgpt")
+        }
+        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-chatgpt\"", null))
+        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"197\"", null))
+        android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
+            variant.signingConfig?.from(signingConfig)
+        }
+    }
     finalizeDsl { extension ->
         extension.buildTypes.findByName("nonMinifiedRelease")?.optimization?.enable = false
     }
@@ -205,6 +230,7 @@ configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configu
 }
 
 dependencies {
+    implementation("com.nimbusds:nimbus-jose-jwt:10.5")
     implementation(libs.quickjs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

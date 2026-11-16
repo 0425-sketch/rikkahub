@@ -19,10 +19,19 @@
 ## 当前状态（2026-11-17，Asia/Singapore）
 
 - 已获取远端 `custom-3.2.0`，从干净的 `work` 分支切换到同名开发分支。
-- 当前已提交 HEAD：`ac089a8f`（既有交付记录）。本进度文件尚未提交；功能尚未修改、未测试。
+- 初始记录已提交并推送：`c648d112`。当前功能改动进行中、尚未提交，尚未运行新协议测试。
 - 已读取完整用户需求、根 `AGENTS.md`、`docs/custom-3.2.0-build.md`、`docs/custom-3.2.0-release.md`。
 - 基线旧 APK：`custom-3.2.0-test`；Actions `43867882083`；不是本次交付。
 - 子任务：协议核实代理读取六份官方文档及源码；交付代理核对原签名和构建环境并准备新版 workflow。
+
+## 阶段更新：官方协议与交付路线已确认
+
+- 六份官方文档直接 HTTPS 返回 200，正文及相关规范存于 `/workspace/work/siwc-docs/`。授权端点 `/api/accounts/authorize`，交换/刷新端点 `/api/accounts/oauth/token`，资源 `https://api.openai.com/v1`；正式 client ID 来自首次回调，套餐权限仅依据 token 响应 `chatgpt.tokens.use.direct`。
+- 公共 `/v1/models` 返回 `models[]`；`/v1/responses` 必须 `store:false`、`stream:true`、完整历史，只有 `response.completed` 才判成功；本地 function tools 使用 namespace。OIDC discovery 确认官方 issuer、JWKS 和 revoke 端点。
+- 授权代理负责凭据/安装host/刷新/退出竞态与测试；独立验证代理负责维护库 JWT/JWKS 校验；推理代理负责模型、Responses、工具与回归；主代理负责账号/套餐状态 UI、整合和验收。
+- 已复用现有 SDK/JDK/NDK/CMake。原 Debug keystore 在已检查的工作区和用户 Android 目录未找到。旧 APK：包名 `me.rerere.rikkahub.debug`，versionCode `196`，证书 SHA-256 `a630b83127a5ddb0b976e48668906de0d70d0172d7a83c27d09790204a63c8d5`。
+- 新版采用独立包名 `me.rerere.rikkahub.chatgpt.debug`、versionCode `197`，不要求卸载旧版本。仓库 Actions secrets 查询实际返回 403（integration 无权限），当前无可用安全签名持久化工具；先完成可安装独立包，后续同签名升级为已知未完成项。keystore 不进入仓库、日志或任何普通 artifact。
+- 新工作流由 Actions GITHUB_TOKEN 构建当前提交并创建独立 Pre-release，支持可选安全注入固定签名；现阶段无新版 Actions/Release/APK，不能交付旧包。
 
 ## 已确认问题与不重复路径
 
@@ -35,3 +44,13 @@
 1. 核实官方协议并审阅现有 OAuth、Provider、模型和流式实现，分配互不冲突的代码工作。
 2. 提交并推送本记录；分阶段实现和验证，及时回填具体提交、测试结论、Actions/Release/产物。
 3. 完成本次 ARM64 APK 的自动发布与下载校验，保留真实账号未测项目。
+
+## 阶段更新：首轮实现与测试
+
+- 授权、公共 API、namespace 工具、严格流式终态、套餐 UI 与新版 workflow 已落盘，仍为未提交的工作区改动。UI新增重新授权、无套餐权限、旧账号迁移状态；官方用量入口已从官方文档确认是 `https://chatgpt.com/settings/usage`。
+- 新流程：`.github/workflows/chatgpt-test-apk.yml` + `tools/publish-chatgpt-test.py`，首次提交工作流会触发；后续可更新 `docs/chatgpt-oauth-build-request.txt` 触发。源码精确 checkout `github.sha`，标签包含 SHA/run/attempt，不覆盖旧版。
+- 构建配置 `./gradlew help` 通过；发布脚本语法、YAML、6 项下载完整性用例通过；真实旧 APK 被包名/版本检查拒绝。日志 `/workspace/work/delivery-gradle-config.log`。尚未运行新版 Actions。
+- 首轮本地 `:oauth:testDebugUnitTest :ai:testDebugUnitTest :app:testGithubDebugUnitTest`：OAuth任务通过；AI 313 项中2项失败，应用测试未运行到。失败为旧额度期望及完整工具多轮回放比较；推理代理正在定位修正。完整日志 `/workspace/work/chatgpt-tests-1.log`。
+- 审阅发现刷新 ID token 的可选 nonce 仍需匹配原始 nonce，已要求授权代理补齐并测试。不能把该首轮写为全部测试通过。
+- 凭据审计发现日志 header/表单、手动备份、Web 设置广播会带出凭据，协议代理正做针对性脱敏；安装 host ID 使用不备份的私有文件。
+- 下一步：修复上述失败，完成应用编译/测试与代码审阅；提交推送合理代码阶段，再实际跑 Actions、发布和下载验证。
