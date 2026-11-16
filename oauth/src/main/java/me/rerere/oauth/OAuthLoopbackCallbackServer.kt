@@ -28,6 +28,7 @@ data class OAuthCallback(
     val state: String,
     val error: String?,
     val errorDescription: String?,
+    val clientId: String? = null,
 )
 
 /**
@@ -144,7 +145,12 @@ class OAuthLoopbackCallbackServer(
 
     private suspend fun handleCallback(call: ApplicationCall) {
         call.response.header(HttpHeaders.CacheControl, "no-store")
-        val state = call.request.queryParameters["state"]
+        val parameters = call.request.queryParameters
+        if (listOf("state", "code", "error", "client_id").any { (parameters.getAll(it)?.size ?: 0) > 1 }) {
+            call.respondText(invalidCallbackHtml(), ContentType.Text.Html, HttpStatusCode.BadRequest)
+            return
+        }
+        val state = parameters["state"]
         val registration = state?.let(callbacks::get)
         if (state.isNullOrBlank() || registration == null) {
             call.respondText(
@@ -157,7 +163,7 @@ class OAuthLoopbackCallbackServer(
 
         val code = call.request.queryParameters["code"]
         val error = call.request.queryParameters["error"]
-        if (code.isNullOrBlank() && error.isNullOrBlank()) {
+        if ((code.isNullOrBlank() && error.isNullOrBlank()) || (code != null && error != null)) {
             call.respondText(
                 text = invalidCallbackHtml(),
                 contentType = ContentType.Text.Html,
@@ -171,6 +177,7 @@ class OAuthLoopbackCallbackServer(
             state = state,
             error = error,
             errorDescription = call.request.queryParameters["error_description"],
+            clientId = call.request.queryParameters["client_id"],
         )
         val responseHtml = if (error == null) successHtml() else errorHtml()
         if (!registration.claimed.compareAndSet(false, true)) {

@@ -3,6 +3,7 @@ package me.rerere.ai.provider.providers.openai
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -20,22 +21,55 @@ import me.rerere.ai.util.json
 import me.rerere.ai.util.parseErrorDetail
 import me.rerere.common.http.jsonObjectOrNull
 
-internal class ResponseApiStreamDecoder : StreamChunkDecoder {
+internal class ResponseApiStreamDecoder(
+    private val requireCompletedResponse: Boolean = false,
+    private val functionToolNamespace: String? = null,
+    private val errorMapper: (JsonElement, Int?, String?) -> Exception = { error, _, _ -> error.parseErrorDetail() },
+) : StreamChunkDecoder {
     private val state = ResponseStreamState()
+    private var receivedCompleted = false
+    private val verifiedToolIds = mutableSetOf<String>()
 
     override fun accept(event: SseEvent): DecodeResult {
         if (state.finished) return DecodeResult(completed = true)
-        if (event.data == "[DONE]") return DecodeResult(state.finish(), completed = true)
+        if (event.data == "[DONE]") {
+            if (requireCompletedResponse && !receivedCompleted) failWithError(JsonPrimitive("ChatGPT 响应提前结束，未收到 response.completed，请重试。"))
+            return DecodeResult(state.finish(), completed = true)
+        }
 
         val payload = json.parseToJsonElement(event.data).jsonObject
         val eventType = payload["type"]?.jsonPrimitive?.contentOrNull
+        if (requireCompletedResponse && eventType == "response.incomplete") {
+            failWithError(payload)
+        }
+        if (eventType == "response.completed") {
+            if (requireCompletedResponse && (state.toolNames.keys + state.toolInputs.keys).any {
+                    it !in verifiedToolIds || state.toolNames[it].isNullOrBlank()
+                }) {
+                failWithError(JsonPrimitive("ChatGPT 工具调用缺少完整结束事件，已停止执行。"))
+            }
+            val status = payload["response"]?.jsonObjectOrNull?.get("status")?.jsonPrimitive?.contentOrNull
+            if (requireCompletedResponse && status != null && status != "completed") {
+                failWithError(JsonPrimitive("ChatGPT 结束事件的状态不一致，请重试。"))
+            }
+            receivedCompleted = true
+        }
         val chunks = parseEvent(payload)
-        val completed = eventType == "response.completed" || eventType == "response.incomplete" ||
-            event.event == "response.completed" || event.event == "response.incomplete"
+        val completed = if (requireCompletedResponse) {
+            receivedCompleted
+        } else {
+            eventType == "response.completed" || eventType == "response.incomplete" ||
+                event.event == "response.completed" || event.event == "response.incomplete"
+        }
         return DecodeResult(chunks, completed)
     }
 
-    override fun onClosed(): List<StreamChunk> = state.finish()
+    override fun onClosed(): List<StreamChunk> {
+        if (requireCompletedResponse && !receivedCompleted && !state.finished) {
+            failWithError(JsonPrimitive("ChatGPT 连接中断，未收到 response.completed，请重试。"))
+        }
+        return state.finish()
+    }
 
     private fun parseEvent(payload: JsonObject): List<StreamChunk> {
         val chunkType = payload["type"]?.jsonPrimitive?.content ?: error("chunk type not found")
@@ -88,6 +122,10 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                 val id = item.itemIdOrCallId() ?: error("chunk id not found")
                 when (type) {
                     "function_call" -> {
+                        val namespace = item["namespace"]?.jsonPrimitive?.contentOrNull
+                        if (functionToolNamespace != null && namespace != null && namespace != functionToolNamespace) {
+                            failWithError(JsonPrimitive("ChatGPT 返回未知工具 namespace，已停止执行。"))
+                        }
                         val callId = item["call_id"]?.jsonPrimitive?.contentOrNull ?: id
                         state.toolCallIdsByItemId[id] = callId
                         outputIndex?.let { state.toolCallIdsByOutputIndex[it] = callId }
@@ -133,7 +171,32 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                         }
                         addAll(state.endImage(id))
                     }
-                    "function_call" -> state.endTool(state.toolCallIdsByItemId.remove(id) ?: id)
+                    "function_call" -> {
+                        val callId = state.toolCallIdsByItemId.remove(id)
+                            ?: item["call_id"]?.jsonPrimitive?.contentOrNull ?: id
+                        if (requireCompletedResponse) {
+                            val namespace = item["namespace"]?.jsonPrimitive?.contentOrNull
+                            if (namespace != null && namespace != functionToolNamespace) {
+                                failWithError(JsonPrimitive("ChatGPT 返回未知工具 namespace，已停止执行。"))
+                            }
+                            buildList {
+                                val name = item["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                                val previousName = state.toolNames[callId]
+                                if (previousName == null) {
+                                    addAll(state.startTool(callId, name, ""))
+                                } else if (previousName.isEmpty() && name.isNotEmpty()) {
+                                    state.toolNames[callId] = name
+                                    add(StreamChunk.ToolCallDelta(callId, toolNameDelta = name))
+                                } else if (name.isNotEmpty() && name != previousName) {
+                                    failWithError(JsonPrimitive("ChatGPT 工具名称在流中发生冲突，已停止执行。"))
+                                }
+                                addAll(reconcileToolArguments(callId, item["arguments"]?.jsonPrimitive?.contentOrNull))
+                                addAll(state.endTool(callId))
+                            }
+                        } else {
+                            state.endTool(callId)
+                        }
+                    }
                     "function_call_output" -> functionCallOutput(item)
                     else -> if (isOpenAIServerToolCall(type)) {
                         val tool = item.toOpenAIServerTool()
@@ -150,14 +213,17 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                     }
                 }
             }
-            "response.function_call_arguments.delta" -> state.toolDelta(
-                resolveToolCallId(payload, itemId, outputIndex),
-                payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
-            )
+            "response.function_call_arguments.delta" -> {
+                val callId = resolveToolCallId(payload, itemId, outputIndex)
+                verifiedToolIds.remove(callId)
+                state.toolDelta(callId, payload["delta"]?.jsonPrimitive?.contentOrNull ?: "")
+            }
             "response.function_call_arguments.done" -> {
                 val toolCallId = resolveToolCallId(payload, itemId, outputIndex)
                 buildList {
-                    if (toolCallId !in state.toolIdsWithInput) {
+                    if (requireCompletedResponse) {
+                        addAll(reconcileToolArguments(toolCallId, payload["arguments"]?.jsonPrimitive?.contentOrNull))
+                    } else if (toolCallId !in state.toolIdsWithInput) {
                         addAll(state.toolDelta(
                             toolCallId,
                             payload["arguments"]?.jsonPrimitive?.contentOrNull ?: "",
@@ -181,6 +247,16 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             "error" -> failWithError(payload)
             else -> parseServerToolStatusEvent(chunkType, itemId)
         }
+    }
+
+    private fun reconcileToolArguments(callId: String, arguments: String?): List<StreamChunk> {
+        val accumulated = state.toolInputs[callId].orEmpty()
+        val complete = arguments ?: accumulated
+        if (!complete.startsWith(accumulated) || runCatching { json.parseToJsonElement(complete) as? JsonObject }.getOrNull() == null) {
+            failWithError(JsonPrimitive("ChatGPT 工具参数不完整或在流中发生冲突，已停止执行。"))
+        }
+        verifiedToolIds += callId
+        return state.toolDelta(callId, complete.removePrefix(accumulated))
     }
 
     // 部分兼容网关的 arguments 事件不带 item_id，只带 call_id，依次回退到 call_id、output_index
@@ -223,6 +299,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
     }
 
     private fun failWithResponseError(payload: JsonObject): Nothing {
+        if (requireCompletedResponse) failWithError(payload)
         val response = payload["response"]?.jsonObject
         return failWithError(
             response?.get("error")?.takeUnless { it is JsonNull }
@@ -233,7 +310,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
 
     private fun failWithError(error: JsonElement): Nothing {
         state.abort()
-        throw error.parseErrorDetail()
+        throw errorMapper(error, null, null)
     }
 
     private fun parseServerToolStatusEvent(chunkType: String, itemId: String?): List<StreamChunk> {
@@ -265,6 +342,8 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
         val toolCallIdsByItemId = mutableMapOf<String, String>()
         val toolCallIdsByOutputIndex = mutableMapOf<Int, String>()
         val toolIdsWithInput = mutableSetOf<String>()
+        val toolNames = mutableMapOf<String, String>()
+        val toolInputs = mutableMapOf<String, String>()
         val reasoningMetadata = mutableMapOf<String, JsonObject>()
 
         // 文本 id（item:text:index）到当前 part id。xAI 在服务端工具前后都往同一个 message item 写正文，
@@ -339,6 +418,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
         }
         fun endImage(id: String) = if (openImageIds.remove(id)) listOf(StreamChunk.ImageEnd(id)) else emptyList()
         fun startTool(id: String, name: String, initialInput: String): List<StreamChunk> = buildList {
+            toolNames.putIfAbsent(id, name)
             if (openToolIds.add(id)) {
                 interruptTexts()
                 add(StreamChunk.ToolCallStart(id, name))
@@ -352,6 +432,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             }
             if (input.isNotEmpty()) {
                 toolIdsWithInput += id
+                toolInputs[id] = toolInputs[id].orEmpty() + input
                 add(StreamChunk.ToolCallDelta(id, inputDelta = input))
             }
         }

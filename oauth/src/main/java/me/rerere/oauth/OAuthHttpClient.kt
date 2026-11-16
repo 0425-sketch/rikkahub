@@ -7,6 +7,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -66,9 +68,11 @@ class OAuthHttpClient(
         @SerialName("refresh_token") val refreshToken: String? = null,
         @SerialName("id_token") val idToken: String? = null,
         val scope: String? = null,
-    )
+    ) {
+        override fun toString(): String = "TokenResponse(tokens=[REDACTED])"
+    }
 
-    /** 令牌端点请求体的编码方式。标准 OAuth 用表单，部分厂商（如 ChatGPT 的刷新）只认 JSON。 */
+    /** Standard OAuth uses form encoding; JSON remains available for other providers. */
     enum class TokenEncoding { FORM, JSON }
 
     data class Pkce(val verifier: String, val challenge: String)
@@ -291,14 +295,39 @@ class OAuthHttpClient(
             .post(body)
             .build()
         val text = execute(request)
-        return json.decodeFromString(TokenResponse.serializer(), text)
+        return try {
+            json.decodeFromString(TokenResponse.serializer(), text)
+        } catch (_: Exception) {
+            throw TokenProtocolException()
+        }
+    }
+
+    class TokenProtocolException : IOException("OAuth token response was malformed; sign in again")
+
+    class OAuthHttpException(val status: Int, val error: String?) : IOException(
+        "OAuth request failed (HTTP $status${error?.let { ", $it" } ?: ""})"
+    )
+
+    suspend fun revokeToken(endpoint: String, clientId: String, refreshToken: String) = withContext(Dispatchers.IO) {
+        val form = FormBody.Builder().add("token", refreshToken)
+            .add("token_type_hint", "refresh_token").add("client_id", clientId).build()
+        execute(Request.Builder().url(endpoint).post(form).build())
+        Unit
     }
 
     private suspend fun execute(request: Request): String {
         executeRaw(request).use { response ->
             val body = response.body.string()
             if (!response.isSuccessful) {
-                throw IOException("HTTP ${response.code} for ${request.url}: ${body.take(300)}")
+                val code = runCatching {
+                    val parsed = json.parseToJsonElement(body).jsonObject
+                    val error = parsed["error"]
+                    val value = (error as? JsonPrimitive)?.contentOrNull
+                        ?: (error as? JsonObject)?.get("code")?.jsonPrimitive?.contentOrNull
+                        ?: parsed["error_code"]?.jsonPrimitive?.contentOrNull
+                    value?.takeIf { it.matches(Regex("[a-zA-Z0-9_]{1,80}")) }
+                }.getOrNull()
+                throw OAuthHttpException(response.code, code)
             }
             return body
         }

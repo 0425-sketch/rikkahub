@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -164,9 +165,13 @@ class ResponseAPI(
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .build()
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        if (endpoint.capabilities.logPayloads) Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
 
-        val decoder = ResponseApiStreamDecoder()
+        val decoder = ResponseApiStreamDecoder(
+            requireCompletedResponse = endpoint.capabilities.requireCompletedResponse,
+            functionToolNamespace = endpoint.capabilities.functionToolNamespace,
+            errorMapper = endpoint.capabilities.errorMapper,
+        )
 
         fun sendChunks(chunks: Iterable<StreamChunk>) {
             chunks.forEach { chunk ->
@@ -183,7 +188,7 @@ class ResponseAPI(
                 type: String?,
                 data: String
             ) {
-                Log.d(TAG, "onEvent: $id/$type $data")
+                if (endpoint.capabilities.logPayloads) Log.d(TAG, "onEvent: $id/$type $data")
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
@@ -194,37 +199,35 @@ class ResponseAPI(
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                var exception = t
-
-                t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
-
-                val bodyRaw = response?.body?.stringSafe()
-                try {
-                    if (!bodyRaw.isNullOrBlank()) {
-                        val bodyElement = Json.parseToJsonElement(bodyRaw)
-                        println(bodyElement)
-                        exception = bodyElement.parseErrorDetail()
-                        Log.i(TAG, "onFailure: $exception")
-                    }
-                } catch (e: Throwable) {
-                    Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
-                    e.printStackTrace()
-                } finally {
-                    close(exception)
+                val bodyRaw = runCatching { response?.body?.string() }.getOrNull()
+                val error = bodyRaw?.takeIf { it.isNotBlank() }?.let { raw ->
+                    runCatching { Json.parseToJsonElement(raw) }.getOrElse { JsonPrimitive(raw) }
                 }
+                val exception = if (error != null || response?.isSuccessful == false) {
+                    endpoint.capabilities.errorMapper(
+                        error ?: JsonPrimitive("Request failed"),
+                        response?.code,
+                        response?.header("x-request-id"),
+                    )
+                } else {
+                    t ?: IllegalStateException("Response stream interrupted before completion")
+                }
+                close(exception)
             }
 
             override fun onClosed(eventSource: EventSource) {
-                sendChunks(decoder.onClosed())
-                close()
+                try {
+                    sendChunks(decoder.onClosed())
+                    close()
+                } catch (e: Throwable) {
+                    close(e)
+                }
             }
         }
 
         val eventSource = client.newEventSource(request, listener)
 
         awaitClose {
-            println("[awaitClose] 关闭eventSource ")
             eventSource.cancel()
         }
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
@@ -236,6 +239,10 @@ class ResponseAPI(
         params: TextGenerationParams,
         stream: Boolean
     ): JsonObject {
+        val protectedOverrides = params.customBody.map { it.key }.intersect(capabilities.protectedBodyFields)
+        require(protectedOverrides.isEmpty()) {
+            "ChatGPT 套餐请求不能覆盖这些字段：${protectedOverrides.joinToString()}"
+        }
         return buildJsonObject {
             put("model", params.model.modelId)
             put("stream", stream)
@@ -263,7 +270,15 @@ class ResponseAPI(
                         put("content", systemPrompt)
                     })
                 }
-                buildMessages(messages).forEach { add(it) }
+                buildMessages(messages).forEach { item ->
+                    val namespace = capabilities.functionToolNamespace
+                    val objectItem = item.jsonObject
+                    if (namespace != null && objectItem["type"]?.jsonPrimitive?.contentOrNull == "function_call") {
+                        add(JsonObject(objectItem + ("namespace" to JsonPrimitive(namespace))))
+                    } else {
+                        add(item)
+                    }
+                }
             }
 
             // reasoning
@@ -294,20 +309,33 @@ class ResponseAPI(
             if (useFunctionTools || params.model.tools.isNotEmpty()) {
                 putJsonArray("tools") {
                     if (useFunctionTools) {
-                        params.tools.forEach { tool ->
-                            add(buildJsonObject {
-                                put("type", "function")
-                                put("name", tool.name)
-                                put("description", tool.description)
-                                put(
-                                    "parameters",
-                                    json.encodeToJsonElement(
-                                        tool.parameters()
+                        val functions = buildJsonArray {
+                            params.tools.forEach { tool ->
+                                add(buildJsonObject {
+                                    put("type", "function")
+                                    put("name", tool.name)
+                                    put("description", tool.description)
+                                    put(
+                                        "parameters",
+                                        json.encodeToJsonElement(
+                                            tool.parameters()
+                                        )
                                     )
-                                )
-                                // Response API 不传 strict 时默认按严格模式处理, 会把 schema 里的可选字段全部变成必填,
-                                // 模型只能给本应省略的字段硬填默认值 (0 / "" / []), 导致工具参数校验失败
-                                put("strict", false)
+                                    // Response API 不传 strict 时默认按严格模式处理, 会把 schema 里的可选字段全部变成必填,
+                                    // 模型只能给本应省略的字段硬填默认值 (0 / "" / []), 导致工具参数校验失败
+                                    put("strict", false)
+                                })
+                            }
+                        }
+                        val namespace = capabilities.functionToolNamespace
+                        if (namespace == null) {
+                            functions.forEach { add(it) }
+                        } else {
+                            add(buildJsonObject {
+                                put("type", "namespace")
+                                put("name", namespace)
+                                put("description", "Tools executed by the RikkaHub client on the user's device")
+                                put("tools", functions)
                             })
                         }
                     }
@@ -332,7 +360,7 @@ class ResponseAPI(
                     }
                 }
             }
-        }.mergeCustomBody(params.customBody)
+        }.mergeCustomBody(params.customBody).let(capabilities.requestBodyTransform)
     }
 
     internal fun buildMessages(messages: List<UIMessage>) = buildJsonArray {
@@ -775,6 +803,12 @@ private fun List<UIMessagePart>.isOnlyTextPart(): Boolean {
 }
 
 internal data class ResponseProviderCapabilities(
+    val functionToolNamespace: String? = null,
+    val requireCompletedResponse: Boolean = false,
+    val protectedBodyFields: Set<String> = emptySet(),
+    val requestBodyTransform: (JsonObject) -> JsonObject = { it },
+    val errorMapper: (JsonElement, Int?, String?) -> Exception = { error, _, _ -> error.parseErrorDetail() },
+    val logPayloads: Boolean = true,
     val supportsReasoningSummary: Boolean = true,
     val supportEncryptedContent: Boolean = true,
     // 不为 null 时 system 提示以这个角色的消息放在 input 开头，不用 instructions 字段

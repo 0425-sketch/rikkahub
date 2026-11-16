@@ -6,25 +6,59 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlin.uuid.Uuid
 
-/** 账号登录得到的 OAuth 凭据 */
+/** OAuth credentials are stored in Android's private app storage. Never include tokens in diagnostics. */
 @Serializable
 data class OAuthCredential(
     val accessToken: String,
     val refreshToken: String? = null,
-    // access token 过期时间（毫秒时间戳），0 表示未知
     val expiresAt: Long = 0L,
-    // 厂商侧的账号/工作区 ID，ChatGPT 请求需要带上
     val accountId: String? = null,
-    // 以下仅用于界面展示
     val email: String? = null,
     val plan: String? = null,
+    // Defaults deliberately identify historical Codex credentials as legacy.
+    val protocolVersion: Int = 0,
+    val clientId: String? = null,
+    val issuer: String? = null,
+    val subject: String? = null,
+    val idToken: String? = null,
+    val idTokenNonce: String? = null,
+    val pendingRefresh: ChatGPTPendingRefresh? = null,
+    val grantedScopes: Set<String> = emptySet(),
+    val tokenType: String = "Bearer",
+    val savedAt: Long = 0L,
 ) {
-    override fun toString(): String =
-        "OAuthCredential(accessToken=${accessToken.masked()}, refreshToken=${refreshToken?.masked()}, " +
-            "expiresAt=$expiresAt, accountId=$accountId, email=$email, plan=$plan)"
+    val isOfficialChatGPT: Boolean
+        get() = protocolVersion == 1 && issuer == "https://auth.openai.com" &&
+            !clientId.isNullOrBlank() && clientId != "dynamic_agent_client" && !subject.isNullOrBlank()
 
-    private fun String.masked(): String = if (length <= 8) "***" else "${take(4)}***${takeLast(4)}"
+    val hasChatGPTPlanAccess: Boolean
+        get() = isOfficialChatGPT && pendingRefresh == null && "chatgpt.tokens.use.direct" in grantedScopes
+
+    override fun toString(): String = "OAuthCredential(tokens=[REDACTED], expiresAt=$expiresAt, protocolVersion=$protocolVersion)"
 }
+
+/** A rotated response awaiting signing-key recovery. It must never authorize API requests. */
+@Serializable
+data class ChatGPTPendingRefresh(
+    val accessToken: String,
+    val refreshToken: String? = null,
+    val idToken: String? = null,
+    val tokenType: String = "Bearer",
+    val expiresIn: Long? = null,
+    val scope: String? = null,
+    val receivedAt: Long,
+) {
+    override fun toString(): String = "ChatGPTPendingRefresh(tokens=[REDACTED])"
+}
+
+/** The registration survives sign-out; tokens never belong in this record. */
+@Serializable
+data class ChatGPTRegistration(
+    val clientId: String,
+    val issuer: String = "https://auth.openai.com",
+    val subject: String? = null,
+    val email: String? = null,
+)
 
 @Serializable
 enum class ClaudePromptCacheTtl(val apiValue: String?) {
@@ -257,6 +291,7 @@ sealed class ProviderSetting {
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
         override val credential: OAuthCredential? = null,
+        val chatGPTRegistration: ChatGPTRegistration? = null,
     ) : Account() {
         override fun withCredential(credential: OAuthCredential?): Account = copy(credential = credential)
 

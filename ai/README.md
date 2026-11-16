@@ -70,7 +70,7 @@ ai 模块不接触设置存储，也不发起授权流程。
 
 #### 登录
 
-以 ChatGPT 为例，协议参数与 Codex CLI 一致（`client_id`、回调地址都是 Codex CLI 在 OpenAI 授权服务器上注册的，必须原样使用）：
+ChatGPT 使用官方 Sign in with ChatGPT 开源本地应用流程，首次动态注册，后续复用返回的正式 client ID：
 
 ```mermaid
 sequenceDiagram
@@ -82,15 +82,15 @@ sequenceDiagram
     participant DS as SettingsStore
 
     UI->>M: startLogin(providerId)
-    M->>S: openSession(state)，在 127.0.0.1:1455 监听并启动前台服务保活
-    M->>B: 打开 /oauth/authorize（PKCE、state、scope、originator 等）
+    M->>S: openSession(state)，在 127.0.0.1 loopback 监听并启动前台服务保活
+    M->>B: 打开 /api/accounts/authorize（PKCE、state、nonce、resource、scope、安装 host ID）
     B->>A: 用户登录并授权
-    A-->>B: 重定向到 http://127.0.0.1:1455/auth/callback?code&state
+    A-->>B: 重定向到 loopback /auth/callback（code、state、正式 client_id）
     B->>S: 回调
     S-->>M: 按 state 交回 code（5 分钟超时）
-    M->>A: POST /oauth/token（authorization_code，表单）
+    M->>A: POST /api/accounts/oauth/token（authorization_code、正式 client_id、resource，表单）
     A-->>M: access_token、refresh_token、id_token
-    M->>M: ChatGPTAuth.toCredential：从 JWT 里取 accountId、email、plan、过期时间
+    M->>M: 校验回调与 ID Token 的 JWKS 签名、issuer、audience、时效、nonce、身份及 token.scope
     M->>DS: 写入该提供商的 credential
 ```
 
@@ -118,7 +118,8 @@ sequenceDiagram
 
 - 登录状态通过 `ProviderAccountManager.loginStatus` 暴露给界面：进行中是 `Authorizing`，设备码登录等待确认时是
   `DeviceCode(userCode, verificationUrl)`，失败是 `Failed(message)`，成功或取消后移除。
-- JWT 只解码 payload、不校验签名：token 直接来自授权服务器的 HTTPS 响应。
+- ChatGPT 的 ID Token 必须完成 JWKS 验签及声明验证后才保存新凭据；Grok 保持原有流程。
+- ChatGPT 套餐权限只来自 token 响应实际授予的 `chatgpt.tokens.use.direct`；旧凭据必须重新授权。
 - 授权和刷新请求走应用的 `OkHttpClient`，会使用设置里的代理。
 
 #### 发请求与刷新
@@ -129,17 +130,17 @@ sequenceDiagram
     participant M as ProviderAccountManager
     participant DS as SettingsStore
     participant A as auth.openai.com
-    participant C as chatgpt.com/backend-api/codex
+    participant C as api.openai.com/v1
 
     P->>M: getCredential(setting, rejectedAccessToken = null)
     M->>M: 获取该提供商的锁，重新读取设置里的最新凭据
     alt 距离过期不到 5 分钟
-        M->>A: POST /oauth/token（refresh_token，JSON）
+        M->>A: POST /api/accounts/oauth/token（refresh_token、正式 client_id、resource，表单）
         A-->>M: 新的 access_token（可能附带新的 refresh_token、id_token）
         M->>DS: 写回凭据
     end
     M-->>P: 凭据
-    P->>C: 请求（Authorization、ChatGPT-Account-ID、originator）
+    P->>C: 公共 Responses 请求（Authorization: Bearer）
     opt 返回 401
         P->>M: getCredential(setting, rejectedAccessToken = 刚用的 token)
         Note over M: 设置里存的仍是这个 token 就强制刷新；<br/>已被并发请求刷新过就直接返回新的
@@ -152,8 +153,8 @@ sequenceDiagram
   流式、非流式、模型列表和额度查询请求都覆盖到。`configureAccountAuth` 写入 `Authorization: Bearer`，各 Provider 只补充自己的额外鉴权头，
   重试时用新凭据重写同一组头。
   它通过请求上的 tag 认出账号类请求，每个请求最多重试一次。
-- 刷新失败（网络错误、refresh token 失效等）时抛出「请重新登录」的错误，但**不清除凭据**：临时的网络问题不应该把用户登出。
-  重新登录会直接覆盖旧凭据。
+- ChatGPT 临时网络或服务错误保留凭据；官方终止性刷新错误清除不可用令牌并提示重新授权。
+  新授权必须先完成验证，旧请求或已退出会话不得回写凭据；保留注册信息供重新授权使用。
 - 未登录时 `getCredential` 直接抛错。
 
 #### 凭据的写入和去向
@@ -170,16 +171,26 @@ sequenceDiagram
 
 #### ChatGPT 的请求约定
 
-地址固定为 `https://chatgpt.com/backend-api/codex`，协议是 Responses API，但和 `api.openai.com` 有几处不同，详见 `ChatGPTProvider`。
-请求体的差异用 `CODEX_CAPABILITIES`（`ResponseProviderCapabilities`）表达，由 `ResponseAPI` 直接生成：
+地址固定为 `https://api.openai.com/v1`，只使用 OAuth Bearer token，不发送旧 Codex 身份或版本参数。
+`CHATGPT_CAPABILITIES` 在共享 Responses 实现中启用仅适用于此连接的约束：
 
-- 鉴权头：`Authorization: Bearer <accessToken>`、`ChatGPT-Account-ID: <accountId>`、`originator: codex_cli_rs`；
-- `POST /responses` 只支持流式，`store` 必须为 false；system 提示以 `developer` 消息放在 `input` 开头，不使用 `instructions`；
-  不接受 `max_output_tokens`、`temperature`、`top_p`；总是请求 `reasoning.encrypted_content`，会话 ID 作为 `prompt_cache_key`；
-- `GET /models?client_version=<版本>` 返回 Codex 可用的模型，结果按客户端版本过滤；
-- 订阅用量走 `GET https://chatgpt.com/backend-api/wham/usage`（不在 `/codex` 下），取 `rate_limit` 的
-  `primary_window`、`secondary_window`（通常是 5 小时和一周），返回 `ProviderQuota.UsageLimits`；
-- 流式响应不带 `Content-Type`，依赖 common 模块里放宽了这项检查的 SSE 实现（`me.rerere.common.http.sse.newEventSource`）。
+- `POST /responses` 必须 `stream=true`、`store=false`，完整历史随 `input` 重放，系统提示转换为 `developer` 消息；
+  过滤官方列出的不支持参数（包括 `previous_response_id`），禁止自定义 body 覆盖路由、历史、工具或流式/存储字段。
+- 本地 MCP、工作区、技能及 Phone Use 等函数放入 `rikkahub` namespace，函数名保持客户端原名；
+  流事件按 `call_id` 归并参数，客户端执行，后续重放函数调用时恢复 namespace，结果按 `call_id` 回传。
+  不支持的服务端工具在发送前明确报错，不影响其他 Provider 的工具协议。
+- `GET /models` 读取账号实际返回的 `models`，仅展示 `visibility=list`，保留服务端顺序，使用 `slug` 调用；
+  读取明确提供的模态、推理及上下文信息，缺失图像能力时保守使用文本，不回退到隐藏或编造模型。
+- 仅 `response.completed` 表示成功；`response.failed`、`error`、`response.incomplete` 及提前断流均报错，
+  不把连接关闭或 `[DONE]` 视为套餐调用成功。取消会关闭底层请求。
+- 保留 HTTP 状态、错误码、参数、请求 ID 与错误响应形状，用量/资格/能力错误提供明确提示，不切换其他计费渠道。
+- 不请求旧百分比额度接口；设置中显示实际授权状态与 ChatGPT 官方用量管理入口，不推断余额或重置时间。
+- 单元测试覆盖合成分片 SSE、客户端工具执行与下一轮回答、历史序列化重载、缺少 scope、请求限制、模型解析、
+  共享 Responses 默认行为回归。这些测试不代表真实账号资格或真实套餐推理已经验证。
+
+官方协议：[Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source)、
+[模型与推理](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)、
+[预览限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)。
 
 #### Grok 的请求约定
 
@@ -202,7 +213,7 @@ SuperGrok 订阅，参照 can1357/oh-my-pi 的 xai-oauth，详见 `GrokProvider`
 | ai     | `provider/ProviderQuota.kt`、`provider/QuotaQueryRunner.kt` | 额度类型、自定义查询的配置和执行                                                       |
 | ai     | `provider/ProviderManager.kt`                            | 注入 `AccountCredentialProvider`，按类型分发 Provider                              |
 | ai     | `provider/providers/AccountAuth.kt`                      | 账号类请求的鉴权头和 401 重试                                                      |
-| ai     | `provider/providers/chatgpt/ChatGPTProvider.kt`          | Codex 后端适配、订阅用量                                                         |
+| ai     | `provider/providers/chatgpt/ChatGPTProvider.kt`          | 官方 ChatGPT 公共模型、Responses、套餐权限和错误适配                                                         |
 | ai     | `provider/providers/grok/GrokProvider.kt`                | xAI Responses 适配、模型目录合并、SuperGrok 额度                                     |
 | ai     | `util/KeyRoulette.kt`                                    | 多 key 轮换                                                                 |
 | ai     | `provider/providers/google/vertex/ServiceAccountTokenProvider.kt` | Vertex 服务账号换 token                                                      |

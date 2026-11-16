@@ -44,6 +44,22 @@ class OAuthLoopbackCallbackServerTest {
         }
     }
 
+    @Test
+    fun `official callback preserves client id and rejects ambiguous parameters`() = runBlocking {
+        val server = OAuthLoopbackCallbackServer(callbackPath = "/auth/callback", redirectHost = "127.0.0.1")
+        val session = server.openSession("expected")
+        try {
+            assertTrue(session.redirectUri.startsWith("http://127.0.0.1:"))
+            for (query in listOf("code=a&state=expected&state=other", "code=a&state=expected&client_id=a&client_id=b", "code=a&error=access_denied&state=expected")) {
+                withContext(Dispatchers.IO) { execute("${session.redirectUri}?$query").use { assertEquals(400, it.code) } }
+            }
+            withContext(Dispatchers.IO) { execute("${session.redirectUri}?code=a&state=expected&client_id=oaiapp_new").use { assertEquals(200, it.code) } }
+            assertEquals("oaiapp_new", session.awaitCallback(2.seconds)?.clientId)
+        } finally {
+            session.close()
+        }
+    }
+
     private fun execute(url: String) = httpClient.newCall(
         Request.Builder()
             .url(url)

@@ -19,6 +19,16 @@ data class Model(
     val providerOverwrite: ProviderSetting? = null,
     // 上下文窗口大小(token)
     val contextLength: Int = 1_000_000,
+    // Optional account catalog metadata; other provider routes do not use it.
+    val chatGPTCapabilities: ChatGPTModelCapabilities? = null,
+)
+
+@Serializable
+data class ChatGPTModelCapabilities(
+    val reasoningEfforts: List<String> = emptyList(),
+    val defaultReasoningEffort: String? = null,
+    val supportsReasoningSummary: Boolean? = null,
+    val supportsWebSearch: Boolean? = null,
 )
 
 /**

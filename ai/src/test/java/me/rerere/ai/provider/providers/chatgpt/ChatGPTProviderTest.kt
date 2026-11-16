@@ -1,16 +1,21 @@
 package me.rerere.ai.provider.providers.chatgpt
 
 import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.toList
+import me.rerere.ai.provider.CustomBody
+import me.rerere.ai.provider.BuiltInTools
+import org.junit.Assert.assertThrows
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.Modality
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.OAuthCredential
-import me.rerere.ai.provider.ProviderQuota
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
-import me.rerere.ai.provider.UsageWindow
 import me.rerere.ai.provider.providers.openai.ResponseAPI
 import me.rerere.ai.provider.supportsBuiltInSearch
 import me.rerere.ai.ui.UIMessage
@@ -21,20 +26,19 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.time.Instant
 
 class ChatGPTProviderTest {
     private val api = ResponseAPI(OkHttpClient())
 
-    private fun codexBody(
+    private fun chatGPTBody(
         messages: List<UIMessage>,
         params: TextGenerationParams,
         sessionId: String? = "session-1",
-    ) = api.buildRequestBody(CODEX_CAPABILITIES, messages, params.copy(sessionId = sessionId), stream = true)
+    ) = api.buildRequestBody(CHATGPT_CAPABILITIES, messages, params.copy(sessionId = sessionId), stream = true)
 
     @Test
     fun `system prompt becomes leading developer message instead of instructions`() {
-        val body = codexBody(
+        val body = chatGPTBody(
             messages = listOf(UIMessage.system("Be brief."), UIMessage.user("hello")),
             params = TextGenerationParams(model = Model(modelId = "gpt-5.5")),
         )
@@ -49,7 +53,7 @@ class ChatGPTProviderTest {
 
     @Test
     fun `no developer message without system prompt`() {
-        val body = codexBody(
+        val body = chatGPTBody(
             messages = listOf(UIMessage.user("hello")),
             params = TextGenerationParams(model = Model(modelId = "gpt-5.5")),
         )
@@ -61,7 +65,7 @@ class ChatGPTProviderTest {
 
     @Test
     fun `streams without storage and drops unsupported parameters`() {
-        val body = codexBody(
+        val body = chatGPTBody(
             messages = listOf(UIMessage.user("hello")),
             // 非推理模型名，ResponseAPI 会带上 temperature/top_p
             params = TextGenerationParams(
@@ -83,7 +87,7 @@ class ChatGPTProviderTest {
 
     @Test
     fun `always includes encrypted reasoning and prompt cache key`() {
-        val body = codexBody(
+        val body = chatGPTBody(
             messages = listOf(UIMessage.user("hello")),
             params = TextGenerationParams(model = Model(modelId = "gpt-5.5")),
             sessionId = "conversation-42",
@@ -98,7 +102,7 @@ class ChatGPTProviderTest {
 
     @Test
     fun `keeps include from reasoning models and omits missing cache key`() {
-        val body = codexBody(
+        val body = chatGPTBody(
             messages = listOf(UIMessage.user("hello")),
             params = TextGenerationParams(
                 model = Model(modelId = "gpt-5.5", abilities = listOf(ModelAbility.REASONING)),
@@ -107,13 +111,14 @@ class ChatGPTProviderTest {
         )
 
         assertEquals(1, body["include"]!!.jsonArray.size)
-        assertTrue("reasoning" in body)
+        // AUTO effort and no advertised reasoning summary do not invent a capability.
+        assertFalse("summary" in (body["reasoning"]?.jsonObject.orEmpty()))
         assertNull(body["prompt_cache_key"])
     }
 
     @Test
-    fun `parses visible codex models`() {
-        val models = parseCodexModels(
+    fun `parses visible account models`() {
+        val models = parseChatGPTModels(
             """
             {
               "models": [
@@ -155,14 +160,14 @@ class ChatGPTProviderTest {
     }
 
     @Test
-    fun `falls back to all models when none are listed`() {
-        val models = parseCodexModels(
+    fun `does not expose hidden models or infer image capability`() {
+        val models = parseChatGPTModels(
             """{"models": [{"slug": "a", "display_name": "A", "visibility": "hide"}]}"""
         )
 
-        assertEquals(listOf("a"), models.map { it.modelId })
-        // 没给 input_modalities 时按 Codex 的默认值：文本 + 图片
-        assertEquals(listOf(Modality.TEXT, Modality.IMAGE), models.single().inputModalities)
+        assertTrue(models.isEmpty())
+        val listed = parseChatGPTModels("""{"models":[{"slug":"b","visibility":"list"}]}""")
+        assertEquals(listOf(Modality.TEXT), listed.single().inputModalities)
     }
 
     @Test
@@ -197,50 +202,95 @@ class ChatGPTProviderTest {
     }
 
     @Test
-    fun `usage response maps both rate limit windows`() {
-        val usage = parseCodexUsage(
-            """{"plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false,
-                "primary_window":{"used_percent":42,"limit_window_seconds":18000,"reset_after_seconds":600,"reset_at":1760000000},
-                "secondary_window":{"used_percent":7,"limit_window_seconds":604800,"reset_after_seconds":9000,"reset_at":1760500000}},
-                "credits":{"has_credits":false,"unlimited":false,"balance":null}}"""
-        )
+    fun `catalog reasoning capabilities survive persistence and govern requests`() {
+        val model = parseChatGPTModels("""{"models":[{"visibility":"list","slug":"reasoning-model","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}],"default_reasoning_level":"low","supports_reasoning_summary_parameter":false,"supports_search_tool":false}]}""").single()
+        val restored = json.decodeFromString<Model>(json.encodeToString(model))
+        assertEquals(model.chatGPTCapabilities, restored.chatGPTCapabilities)
+        val defaultBody = api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored), true)
+        // App's default OFF must not invent an unsupported `none` effort.
+        assertNull(defaultBody["reasoning"])
+        val highBody = api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored, reasoningLevel = ReasoningLevel.HIGH), true)
+        assertEquals("high", highBody.getValue("reasoning").jsonObject.getValue("effort").jsonPrimitive.content)
+        assertFalse("summary" in highBody.getValue("reasoning").jsonObject)
+        assertThrows(IllegalStateException::class.java) {
+            api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored, reasoningLevel = ReasoningLevel.MAX), true)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored.copy(tools = setOf(BuiltInTools.Search))), true)
+        }
+    }
 
-        assertEquals(
-            ProviderQuota.UsageLimits(
-                windows = listOf(
-                    UsageWindow(
-                        usedPercent = 42.0,
-                        windowMinutes = 300,
-                        resetsAt = Instant.fromEpochSeconds(1760000000)
-                    ),
-                    UsageWindow(
-                        usedPercent = 7.0,
-                        windowMinutes = 10080,
-                        resetsAt = Instant.fromEpochSeconds(1760500000)
-                    ),
-                ),
-                limitReached = false,
+    @Test
+    fun `custom body cannot reenable unsupported plan parameters`() {
+        val body = chatGPTBody(
+            listOf(UIMessage.user("hello")),
+            TextGenerationParams(
+                model = Model(modelId = "available-model"),
+                customBody = listOf("temperature", "max_output_tokens", "previous_response_id", "background", "metadata")
+                    .map { CustomBody(it, JsonPrimitive("unsupported")) },
             ),
-            usage,
         )
+        assertFalse(body.keys.any { it in setOf("temperature", "max_output_tokens", "previous_response_id", "background", "metadata") })
+        assertEquals("true", body.getValue("stream").jsonPrimitive.content)
+        assertEquals("false", body.getValue("store").jsonPrimitive.content)
     }
 
     @Test
-    fun `usage response without rate limit has no windows`() {
-        val usage = parseCodexUsage("""{"plan_type":"free","rate_limit":null}""")
-
-        assertTrue(usage.windows.isEmpty())
-        assertFalse(usage.limitReached)
+    fun `custom overrides cannot erase history or replace routed model and client tools`() {
+        for (key in listOf("model", "input", "tools", "stream", "store")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                chatGPTBody(
+                    listOf(UIMessage.user("hello")),
+                    TextGenerationParams(Model(modelId = "available-model"), customBody = listOf(CustomBody(key, JsonPrimitive("bad")))),
+                )
+            }
+        }
     }
 
     @Test
-    fun `usage response reports reached limit and skips unknown window fields`() {
-        val usage = parseCodexUsage(
-            """{"rate_limit":{"allowed":false,"limit_reached":true,
-                "primary_window":{"used_percent":100,"limit_window_seconds":0,"reset_at":0},"secondary_window":null}}"""
-        )
+    fun `unsupported hosted image tools fail before request`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            chatGPTBody(
+                listOf(UIMessage.user("draw")),
+                TextGenerationParams(Model(modelId = "available-model", tools = setOf(BuiltInTools.ImageGeneration))),
+            )
+        }
+    }
 
-        assertTrue(usage.limitReached)
-        assertEquals(listOf(UsageWindow(usedPercent = 100.0, windowMinutes = null, resetsAt = null)), usage.windows)
+    @Test
+    fun `missing models structure is an error instead of fabricated choices`() {
+        assertThrows(IllegalStateException::class.java) { parseChatGPTModels("""{"data":[{"id":"not-a-plan-catalog"}]}""") }
+    }
+
+    @Test
+    fun `admission errors preserve detail status request id and response shape`() {
+        val body = json.parseToJsonElement("""{"detail":"Synthetic admission restriction"}""")
+        val error = parseChatGPTError(body, 403, "req_test") as ChatGPTApiException
+        assertEquals(403, error.status)
+        assertEquals("req_test", error.requestId)
+        assertEquals(body, error.responseBody)
+        assertTrue(error.message.orEmpty().contains("Synthetic admission restriction"))
+    }
+
+    @Test
+    fun `legacy or missing direct scope cannot send model or inference requests`() = runTest {
+        var requests = 0
+        val client = OkHttpClient.Builder().addInterceptor {
+            requests++
+            error("No HTTP request should be made")
+        }.build()
+        val denied = listOf(
+            OAuthCredential(accessToken = "legacy-test"),
+            OAuthCredential(accessToken = "identity-only", protocolVersion = 1, clientId = "registered", issuer = "https://auth.openai.com", subject = "test-subject", idToken = "synthetic-id", grantedScopes = setOf("openid")),
+        )
+        for (credential in denied) {
+            val provider = ChatGPTProvider(client) { _, _ -> credential }
+            val setting = ProviderSetting.ChatGPT(credential = credential)
+            assertTrue(runCatching { provider.listModels(setting) }.isFailure)
+            assertTrue(runCatching {
+                provider.streamText(setting, listOf(UIMessage.user("hello")), TextGenerationParams(Model(modelId = "available-model"))).toList()
+            }.isFailure)
+        }
+        assertEquals(0, requests)
     }
 }
