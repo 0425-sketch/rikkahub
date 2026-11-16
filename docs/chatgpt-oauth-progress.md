@@ -340,3 +340,11 @@
 - 产品、缓存/请求/数据库/迁移测试、Room33 schema与本记录已提交cbf3552b（fix: preserve SIWC session affinity and truthful cache usage）。此前OAuth、工具、思考、搜索修复全部保留。
 - 紧接交付提交将包含长期签名bootstrap/restore/一次性权限清理、主副独立runner实际APK门禁、空pin禁止发布及34项Python门禁。docs/chatgpt-personal-signing.json的certificate_sha256目前为null，这是明确未配置状态，不是已保存固定签名。
 - 两个工作流随push触发：bootstrap若缺少安全写Secrets权限，必须在生成长期密钥前停止；主工作流独立运行全部验证。通过bootstrap后的公开证书回执需先固定提交，再以新workflow run读取新保存的Secrets，不能复用旧队列快照。仅操作custom-3.2.0，不修改master。
+
+## 实际Actions：源码已推送，签名持久权限缺失已确认
+
+- 已推送产品cbf3552b与交付eebc76d112c94b93b4aac54d6601c9c8c4576ab6到custom-3.2.0；工作区产品/流程代码干净，后续只有进度记录变化。主Actions43904892084（https://github.com/0425-sketch/rikkahub/actions/runs/43904892084），validate job133430971329正在干净runner验证；signing-state job133430971887成功识别空pin，签名与发布仍禁用。
+- bootstrap43904892399（https://github.com/0425-sketch/rikkahub/actions/runs/43904892399），job133430971644已实际失败于SETUP_PERMISSION：RIKKAHUB_SIGNING_SETUP_TOKEN为空。JDK/PyNaCl/源码检查成功；脚本在生成任何应用长期私钥之前退出。日志/workspace/work/actions-43904892399/job-133430971644.log。主/备份Secret也未注入；没有公共签名回执、Release或新APK上传。
+- 此前当前GitHub连接查询Secrets public-key实际403（/workspace/work/personal-signing-permissions.json），没有可用Secrets写权限。不能用普通GITHUB_TOKEN、旧已撤销PAT或临时runner存储绕过此门禁。
+- 待全部独立云端测试完成后，唯一需要用户配置的项目：在https://github.com/0425-sketch/rikkahub/settings/secrets/actions/new 创建Actions repository Secret `RIKKAHUB_SIGNING_SETUP_TOKEN`，值为仅此仓库、Secrets读写权限、短有效期fine-grained PAT。令牌只填GitHub Secret，不通过聊天。官方文档支持预填new token的name/target_name/expires_in/secrets=write，但仓库需明确Only select repositories选rikkahub。
+- 配置后继续动作：更新docs/chatgpt-signing-bootstrap-request.txt并提交push触发新bootstrap→下载仅公开signing-identity/persistence回执并核对→将公开certificate_sha256固定至docs/chatgpt-personal-signing.json→提交push新main run→两个独立runner分别恢复主/备份Secret实际构建→publisher核对两APK证书/包名及job身份→Release上传和公开下载验证→主代理独立再次下载核验→最终给新APK链接。此任务仍未交付完成。
