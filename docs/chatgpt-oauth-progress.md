@@ -19,7 +19,7 @@
 ## 当前状态（2026-11-16，Asia/Singapore）
 
 - 已获取远端 `custom-3.2.0`，从干净的 `work` 分支切换到同名开发分支。
-- 初始记录已提交并推送：`c648d112`；独立测试包构建配置与阶段记录：`bb71920d`；公共API/工具/OAuth兼容结构：`af26646b`，均已推送。应用授权/UI/日志备份/工作流功能改动仍未提交，测试状态见后续阶段记录。
+- 初始记录：`c648d112`；构建配置：`bb71920d`；公共API/工具：`af26646b`；完整应用授权/UI/安全保护/工作流：`1d6332e6191f9693fb3bcf064027a6a332fd01d2`，均已提交并推送。当前仅后续进度记录可能未提交；完整源码已持久保存。
 - 已读取完整用户需求、根 `AGENTS.md`、`docs/custom-3.2.0-build.md`、`docs/custom-3.2.0-release.md`。
 - 基线旧 APK：`custom-3.2.0-test`；Actions `43867882083`；不是本次交付。
 - 子任务：协议核实代理读取六份官方文档及源码；交付代理核对原签名和构建环境并准备新版 workflow。
@@ -74,3 +74,10 @@
 - 修复短有效期令牌导致递归刷新的风险；新增真实磁盘重启恢复、待验证退出、短有效期、取消/重复登录旧结果不可回写测试。Koin显式注入 `AppScope`，避免构造参数泛化后的运行时依赖缺失。
 - 日志/备份保护4项测试已通过。最终统一命令 `:oauth:testDebugUnitTest :ai:testDebugUnitTest :app:testGithubDebugUnitTest` 已成功（34秒）；日志 `/workspace/work/chatgpt-tests-final.log`。所有当前代码编译、模块测试通过，具体数量由JUnit XML核对。真实账号登录及套餐调用仍未执行。
 - 下一步：检查最终结果→修复实际失败→提交完整应用与workflow→推送触发Actions→监控与修复→下载Release APK并复核。
+
+## 阶段更新：新版 Actions 已实际启动
+
+- 最终本地结果：OAuth **10/10**、AI **317/317**、应用 **549/549**，无失败/错误/跳过；含新版Auth 8项、Manager 11项、Verifier 13项。`git diff --check`通过。
+- 构建源码提交：`1d6332e6191f9693fb3bcf064027a6a332fd01d2`。
+- Actions：`https://github.com/0425-sketch/rikkahub/actions/runs/43873871407`，已确认 `in_progress`，head SHA匹配。交付代理监看并保存长日志，主代理负责最终独立下载校验。
+- 目前尚无新版Release下载验证结论。下一步核对Actions每阶段结果，必要时修复并用构建请求文件重新触发；成功后记录独立tag、Release、APK大小/SHA-256/证书/包名/版本/ABI。
