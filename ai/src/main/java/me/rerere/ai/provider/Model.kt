@@ -2,6 +2,7 @@ package me.rerere.ai.provider
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import me.rerere.ai.core.ReasoningLevel
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -30,6 +31,11 @@ data class ChatGPTModelCapabilities(
     val supportsReasoningSummary: Boolean? = null,
     val supportsWebSearch: Boolean? = null,
 )
+
+/** AUTO leaves the server default untouched; explicit levels require account catalog evidence. */
+fun Model.supportedChatGPTReasoningLevels(): List<ReasoningLevel> = ReasoningLevel.entries.filter {
+    it == ReasoningLevel.AUTO || it.effort in chatGPTCapabilities?.reasoningEfforts.orEmpty()
+}
 
 /**
  * 按空格分隔的关键词筛选模型：忽略大小写，每个关键词都要命中模型 ID 或显示名称的一部分，

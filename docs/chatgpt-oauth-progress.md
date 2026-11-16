@@ -172,3 +172,24 @@
 - 已执行 `:search:testDebugUnitTest`：22/22通过（含6项新增Bing用例），日志 `/workspace/work/chatgpt-v2-search-tests.log`。应用层完整runAgent/搜索/两轮Responses集成用例已落盘，但尚未执行；不能混称全部搜索回传已测。
 - 搜索独立阶段随本次提交推送；AI/App新思考与UI迁移仍为未提交且待统一测试。详细调查原始证据 `/workspace/work/search-v2/investigation.md`，不把云端结果当作手机网络复现。
 - 已确认新思考问题：旧OFF在catalog不支持none时静默省略effort。正在实现准确能力约束及已保存无效档位提示；主聊天默认AUTO，辅助请求未明确选档时仅ChatGPT采用AUTO，其他Provider默认行为保持。
+
+## 第二轮阶段：思考参数官方依据复核
+
+- 搜索阶段 `274eb04d` 已推送。当前新增思考/UI/交付改动仍在工作区，尚未统一测试。
+- 独立文档审阅确认：SIWC明确接受instructions或developer；HTTP不支持字段清单与当前过滤列表一致。`reasoning.encrypted_content`用于store:false的多轮延续，与可见summary独立；summary接受auto/concise/detailed，旧generate_summary已deprecated。`prompt_cache_key`可选string/null不在禁用名单，沿用原实现但不保证命中。
+- 当前Responses规范分别列出xhigh和max，必须按模型目录发送原值，UI预算数字不能当作本路由实际token保证。官方SIWC目录说明未承诺扩展reasoning字段；字段缺失时只能确认AUTO可省略effort，UI需说明目录未声明，不能断言模型没有推理能力。
+- 子代理只读审阅结论已汇入本记录及协议实现任务。完整参考仍在 `/workspace/work/siwc-v2-docs/`，不保存账号token、个人请求内容或密钥。
+
+## 第二轮实现冻结：协议与思考能力
+
+- AI协议实现已冻结待最终测试：OFF仅目录声明none时实际发none；AUTO省略effort；LOW/MEDIUM/HIGH/XHIGH/MAX分别发送low/medium/high/xhigh/max，仅启用目录已声明档位。不支持或未知的已保存选择保留并清楚报错，不静默降档。原始3.2.0与当前Assistant/ConversationConfig默认均为AUTO；仅SDK TextGenerationParams默认OFF，辅助OCR已针对ChatGPT显式用AUTO。
+- 高级Body按原有深合并顺序处理，再验证最终effort/summary/include/tool_choice；模型字段仍高于助手字段，但不能覆盖界面档位或受保护的store/stream/model/input/tools。普通模型不支持参数按路由省略，高级显式不支持字段准确报错。补回encrypted_content保证无存储多轮历史。
+- 已新增捕获最终HTTP JSON的所有档位保存重载、Body冲突、可见summary/加密历史、cache、工具两轮XHIGH及普通API Key隔离用例。独立只读审阅未发现新的阻断问题；目前新测试尚未完成运行。
+- 应用链补齐有效Provider能力UI、旧工具迁移、旧会话搜索过滤；连接测试冻结实际模型/override，OCR仅ChatGPT用AUTO，记忆回退聊天模型的档位修正仅限ChatGPT，保留其他Provider原行为。应用测试仍在最后完善。
+- 本地i18n CLI完成17项新增英文/中文文案规范化；未使用自动翻译API、未变更其他语言。未知目录档位文案使用“未声明支持”，不虚称模型没有推理能力。
+
+## 第二轮阶段：最终协议测试通过
+
+- 冻结AI实现执行 `:oauth:testDebugUnitTest :ai:testDebugUnitTest :search:testDebugUnitTest` 成功，日志 `/workspace/work/chatgpt-v2-protocol-tests.log`。JUnit XML核对OAuth10/10、AI332/332、搜索22/22，无失败/错误/跳过。
+- 已测包括8项新增最终JSON思考用例、两轮XHIGH工具执行/回传、旧生图开关不阻断文本与看图/函数能力、显式高级非法字段/工具拒绝、原API Key请求行为。全部HTTP账号/目录fixture为合成数据，不能宣称真实服务端已接受全部档位。
+- 本协议阶段随本次提交推送；应用层旧配置迁移、全链路重载、辅助请求、实际runAgent搜索测试正在单独执行，日志 `/workspace/work/chatgpt-v2-app-tests.log`。候选APK尚未构建，原签名阻碍未解除。

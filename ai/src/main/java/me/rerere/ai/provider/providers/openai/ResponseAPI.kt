@@ -32,6 +32,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.provider.BuiltInTools
+import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderSetting
@@ -239,6 +240,7 @@ class ResponseAPI(
         params: TextGenerationParams,
         stream: Boolean
     ): JsonObject {
+        capabilities.validateCustomBody(params.customBody)
         val protectedOverrides = params.customBody.map { it.key }.intersect(capabilities.protectedBodyFields)
         require(protectedOverrides.isEmpty()) {
             "ChatGPT 套餐请求不能覆盖这些字段：${protectedOverrides.joinToString()}"
@@ -282,7 +284,7 @@ class ResponseAPI(
             }
 
             // reasoning
-            val reasoningModel = params.model.abilities.contains(ModelAbility.REASONING)
+            val reasoningModel = capabilities.isReasoningModel(params.model)
             if (reasoningModel) {
                 val reasoning = buildJsonObject {
                     if (capabilities.supportsReasoningSummary) {
@@ -306,7 +308,10 @@ class ResponseAPI(
             // 否则后写入的会覆盖前者
             val useFunctionTools =
                 params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()
-            if (useFunctionTools || params.model.tools.isNotEmpty()) {
+            val selectedBuiltInTools = params.model.tools.filter {
+                capabilities.supportedBuiltInTools?.contains(it) != false
+            }
+            if (useFunctionTools || selectedBuiltInTools.isNotEmpty()) {
                 putJsonArray("tools") {
                     if (useFunctionTools) {
                         val functions = buildJsonArray {
@@ -340,7 +345,7 @@ class ResponseAPI(
                         }
                     }
                     // built-in tools
-                    params.model.tools.forEach { builtInTool ->
+                    selectedBuiltInTools.forEach { builtInTool ->
                         when (builtInTool) {
                             BuiltInTools.Search -> {
                                 add(buildJsonObject {
@@ -360,7 +365,10 @@ class ResponseAPI(
                     }
                 }
             }
-        }.mergeCustomBody(params.customBody).let(capabilities.requestBodyTransform)
+        }.mergeCustomBody(params.customBody).let(capabilities.requestBodyTransform).also {
+            // Validate the final merged JSON, not defaults that custom fields can replace.
+            capabilities.validateRequestBody(it, params)
+        }
     }
 
     internal fun buildMessages(messages: List<UIMessage>) = buildJsonArray {
@@ -806,7 +814,11 @@ internal data class ResponseProviderCapabilities(
     val functionToolNamespace: String? = null,
     val requireCompletedResponse: Boolean = false,
     val protectedBodyFields: Set<String> = emptySet(),
+    // null preserves the original API Key behavior. A restricted route filters only saved switches.
+    val supportedBuiltInTools: Set<BuiltInTools>? = null,
+    val validateCustomBody: (List<CustomBody>) -> Unit = {},
     val requestBodyTransform: (JsonObject) -> JsonObject = { it },
+    val validateRequestBody: (JsonObject, TextGenerationParams) -> Unit = { _, _ -> },
     val errorMapper: (JsonElement, Int?, String?) -> Exception = { error, _, _ -> error.parseErrorDetail() },
     val logPayloads: Boolean = true,
     val supportsReasoningSummary: Boolean = true,
@@ -817,6 +829,7 @@ internal data class ResponseProviderCapabilities(
     val supportsSamplingParams: Boolean = true,
     // 非推理模型也请求加密推理内容：不保存会话时，自带推理的模型要靠它接上多轮推理
     val alwaysIncludeEncryptedContent: Boolean = false,
+    val isReasoningModel: (Model) -> Boolean = { ModelAbility.REASONING in it.abilities },
     // 推理档位对应的 reasoning.effort（参数依次是档位、模型 id），返回 null 时不带
     val reasoningEffort: (
         ReasoningLevel,

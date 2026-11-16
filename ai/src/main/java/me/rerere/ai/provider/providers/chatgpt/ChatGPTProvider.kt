@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -13,6 +14,8 @@ import kotlinx.serialization.json.intOrNull
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.AccountCredentialProvider
+import me.rerere.ai.provider.BuiltInTools
+import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.ChatGPTModelCapabilities
 import me.rerere.ai.provider.Modality
@@ -22,6 +25,7 @@ import me.rerere.ai.provider.Provider
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.TextGenerationResult
+import me.rerere.ai.provider.supportedChatGPTReasoningLevels
 import me.rerere.ai.provider.providers.configureAccountAuth
 import me.rerere.ai.provider.providers.openai.ResponseAPI
 import me.rerere.ai.provider.providers.openai.ResponseProviderCapabilities
@@ -31,6 +35,7 @@ import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.StreamChunkHandler
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.util.json
+import me.rerere.ai.util.mergeCustomBody
 import me.rerere.common.http.await
 import me.rerere.common.http.jsonPrimitiveOrNull
 import me.rerere.common.http.stringOrNull
@@ -49,36 +54,20 @@ internal val CHATGPT_CAPABILITIES = ResponseProviderCapabilities(
     functionToolNamespace = CHATGPT_TOOL_NAMESPACE,
     requireCompletedResponse = true,
     protectedBodyFields = setOf("model", "input", "tools", "stream", "store"),
+    supportedBuiltInTools = setOf(BuiltInTools.Search),
+    validateCustomBody = ::validateChatGPTCustomBody,
     requestBodyTransform = ::prepareChatGPTRequest,
+    validateRequestBody = ::validateChatGPTRequestBody,
     errorMapper = ::parseChatGPTError,
     logPayloads = false,
-    reasoningEffort = { _, _ -> null },
+    isReasoningModel = { ModelAbility.REASONING in it.abilities || it.chatGPTCapabilities?.reasoningEfforts?.isNotEmpty() == true },
 )
 
 internal fun chatGPTCapabilities(model: Model): ResponseProviderCapabilities {
     val catalog = model.chatGPTCapabilities
     return CHATGPT_CAPABILITIES.copy(
+        supportedBuiltInTools = if (catalog?.supportsWebSearch == false) emptySet() else setOf(BuiltInTools.Search),
         supportsReasoningSummary = catalog?.supportsReasoningSummary == true,
-        reasoningEffort = { level, _ ->
-            when {
-                level == ReasoningLevel.AUTO -> null
-                level == ReasoningLevel.OFF -> "none".takeIf { it in catalog?.reasoningEfforts.orEmpty() }
-                level.effort in catalog?.reasoningEfforts.orEmpty() -> level.effort
-                else -> error("此 ChatGPT 模型未声明支持 ${level.effort} 推理档位，请刷新模型列表或选择自动。")
-            }
-        },
-        requestBodyTransform = { body ->
-            val reasoning = body["reasoning"] as? JsonObject
-            reasoning?.stringOrNull("effort")?.let { effort ->
-                require(effort in catalog?.reasoningEfforts.orEmpty()) { "ChatGPT 模型不支持推理档位：$effort。请选择自动或刷新模型列表。" }
-            }
-            if (catalog?.supportsWebSearch == false) {
-                require((body["tools"] as? JsonArray)?.none { (it as? JsonObject)?.stringOrNull("type") == "web_search" } != false) {
-                    "此 ChatGPT 模型未支持网页搜索，请关闭内置搜索或选择其他模型。"
-                }
-            }
-            prepareChatGPTRequest(body)
-        },
     )
 }
 
@@ -202,10 +191,119 @@ private val unsupportedFields = setOf(
 
 internal fun prepareChatGPTRequest(body: JsonObject): JsonObject {
     val tools = body["tools"] as? JsonArray
+    validateChatGPTTools(tools)
+    validateChatGPTToolChoice(body["tool_choice"])
+    val include = body["include"]
+    require(include == null || include is JsonArray) { "ChatGPT 自定义 include 必须是数组，且需保留 reasoning.encrypted_content 以延续多轮推理。" }
+    val includables = (include as? JsonArray).orEmpty()
+    require(includables.all { it is JsonPrimitive && it.isString }) { "ChatGPT include 必须是字符串数组。" }
+    val unsupportedIncludes = includables.map { (it as JsonPrimitive).content }
+        .filter { it.startsWith("file_search") || it.startsWith("computer_call") || it.startsWith("code_interpreter") }
+    require(unsupportedIncludes.isEmpty()) { "ChatGPT 套餐不支持 include 中的服务端工具：${unsupportedIncludes.joinToString()}。" }
+    return JsonObject(body.filterKeys { it !in unsupportedFields } + mapOf(
+        "store" to JsonPrimitive(false),
+        "stream" to JsonPrimitive(true),
+        // A custom include list may request additional output, but cannot erase stateless history.
+        "include" to JsonArray((includables + JsonPrimitive("reasoning.encrypted_content")).distinct()),
+    ))
+}
+
+private fun validateChatGPTCustomBody(bodies: List<CustomBody>) {
+    val custom = JsonObject(emptyMap()).mergeCustomBody(bodies)
+    val unsupported = custom.keys.intersect(unsupportedFields)
+    require(unsupported.isEmpty()) {
+        "高级自定义请求指定了官方 ChatGPT 套餐路由不支持的字段：${unsupported.joinToString()}。请移除这些字段；普通模型参数会按套餐能力自动处理。"
+    }
+    custom["tools"]?.let { value ->
+        val tools = value as? JsonArray
+        require(tools != null) { "高级自定义请求 tools 必须是数组；ChatGPT 套餐工具由客户端管理。" }
+        validateChatGPTTools(tools, advancedField = "tools")
+    }
+    validateChatGPTToolChoice(custom["tool_choice"])
+}
+
+private fun validateChatGPTRequestBody(body: JsonObject, params: TextGenerationParams) {
+    val catalog = params.model.chatGPTCapabilities
+    require(params.reasoningLevel in params.model.supportedChatGPTReasoningLevels()) {
+        if (params.reasoningLevel == ReasoningLevel.OFF) {
+            "此 ChatGPT 模型未声明支持关闭推理（reasoning.effort=none）。请选择自动或模型支持的档位；不会把关闭静默改成其他档位。"
+        } else {
+            "此 ChatGPT 模型未声明支持 ${params.reasoningLevel.effort} 推理档位，请刷新模型列表或选择自动。"
+        }
+    }
+    val reasoning = body["reasoning"]
+    require(reasoning == null || reasoning is JsonObject) { "ChatGPT 自定义 reasoning 必须是对象，不能覆盖或删除已选择的思考档位。" }
+    val reasoningObject = reasoning as? JsonObject
+    val expectedEffort = params.reasoningLevel.effort.takeUnless { params.reasoningLevel == ReasoningLevel.AUTO }
+    val effortValue = reasoningObject?.get("effort")
+    val actualEffort = (effortValue as? JsonPrimitive)?.takeIf { it.isString }?.content
+    require((effortValue == null || actualEffort != null) && actualEffort == expectedEffort) {
+        "高级自定义请求 reasoning.effort 与界面思考档位冲突（当前应为 ${expectedEffort ?: "自动：省略 effort"}）。请移除自定义 effort，或选择一致且受支持的档位。"
+    }
+    for (key in listOf("summary", "generate_summary")) {
+        val summary = reasoningObject?.get(key)
+        if (summary != null) {
+            require(catalog?.supportsReasoningSummary == true) { "此 ChatGPT 模型未声明支持 reasoning.$key；请移除此自定义推理摘要参数。" }
+            require(summary == JsonNull || (summary is JsonPrimitive && summary.isString && summary.content in setOf("auto", "concise", "detailed"))) {
+                "reasoning.$key 必须是 auto、concise 或 detailed。"
+            }
+        }
+    }
+    if (catalog?.supportsWebSearch == false) {
+        require((body["tools"] as? JsonArray)?.none { (it as? JsonObject)?.stringOrNull("type") == "web_search" } != false &&
+            !toolChoiceUsesWebSearch(body["tool_choice"])) {
+            "此 ChatGPT 模型未支持网页搜索，请关闭内置搜索或移除自定义 tool_choice。"
+        }
+    }
+    for (field in listOf("instructions", "prompt_cache_key")) {
+        val value = body[field]
+        require(value == null || value == JsonNull || (value is JsonPrimitive && value.isString)) {
+            "ChatGPT 自定义 $field 必须是字符串或 null。"
+        }
+    }
+}
+
+private fun toolChoiceUsesWebSearch(choice: JsonElement?): Boolean {
+    val objectChoice = choice as? JsonObject ?: return false
+    return objectChoice.stringOrNull("type") in setOf("web_search", "web_search_preview", "web_search_preview_2025_03_11") ||
+        (objectChoice["tools"] as? JsonArray)?.any(::toolChoiceUsesWebSearch) == true
+}
+
+private fun validateChatGPTToolChoice(choice: JsonElement?, path: String = "tool_choice") {
+    if (choice == null || choice == JsonNull) return
+    if (choice is JsonPrimitive) {
+        require(choice.isString && choice.content in setOf("auto", "none", "required")) { "高级自定义请求 $path 必须是 auto、none、required 或合法工具选择对象。" }
+        return
+    }
+    val selected = choice as? JsonObject ?: error("高级自定义请求 $path 格式无效")
+    when (selected.stringOrNull("type")) {
+        "allowed_tools" -> {
+            require(selected.stringOrNull("mode") in setOf("auto", "required")) { "高级自定义请求 $path.mode 必须是 auto 或 required。" }
+            val tools = selected["tools"] as? JsonArray ?: error("高级自定义请求 $path.tools 必须是数组")
+            tools.forEachIndexed { index, tool -> validateChatGPTToolChoice(tool, "$path.tools[$index]") }
+        }
+        "function" -> {
+            require(!selected.stringOrNull("name").isNullOrBlank()) { "高级自定义请求 $path 缺少函数名称。" }
+            val namespace = selected.stringOrNull("namespace")
+            require(namespace == null || namespace == CHATGPT_TOOL_NAMESPACE) { "高级自定义请求 $path 指定了无效的客户端工具 namespace。" }
+        }
+        "web_search", "web_search_preview", "web_search_preview_2025_03_11" -> Unit
+        else -> validateChatGPTTools(JsonArray(listOf(selected)), advancedField = path)
+    }
+}
+
+private fun validateChatGPTTools(tools: JsonArray?, advancedField: String? = null) {
     tools?.forEach { element ->
         val tool = element as? JsonObject ?: error("ChatGPT 工具定义无效")
         val type = tool.stringOrNull("type")
-        require(type == "namespace" || type == "web_search") { "ChatGPT 套餐不支持此服务端工具：$type。请使用客户端函数工具。" }
+        require(type == "namespace" || type == "web_search") {
+            val source = if (advancedField != null) "高级自定义请求 $advancedField 明确指定了" else "请求包含"
+            if (type == "image_generation") {
+                "${source} image_generation，但官方 ChatGPT 套餐路由尚不支持原生图像生成。请移除此自定义工具；图片输入识别和独立生图提供商不受影响。"
+            } else {
+                "${source}不支持的服务端工具：$type。ChatGPT 套餐仍可使用本机 MCP 和函数工具。"
+            }
+        }
         if (type == "namespace") {
             require(tool.stringOrNull("name") == CHATGPT_TOOL_NAMESPACE) { "ChatGPT 工具 namespace 无效" }
             require((tool["tools"] as? JsonArray)?.all { (it as? JsonObject)?.stringOrNull("type") == "function" } == true) {
@@ -213,10 +311,6 @@ internal fun prepareChatGPTRequest(body: JsonObject): JsonObject {
             }
         }
     }
-    return JsonObject(body.filterKeys { it !in unsupportedFields } + mapOf(
-        "store" to JsonPrimitive(false),
-        "stream" to JsonPrimitive(true),
-    ))
 }
 
 /** Preserve structured diagnostics without logging request contents or credentials. */
@@ -241,7 +335,7 @@ internal fun parseChatGPTError(body: JsonElement, status: Int? = null, requestId
         ?: (body as? JsonPrimitive)?.contentOrNull
     val recovery = when (code) {
         "subscription_sharing_user_not_eligible" -> "此账号或工作区目前不符合 ChatGPT 套餐调用条件。请检查官方资格和策略。"
-        "subscription_sharing_usage_limit_exceeded" -> "此应用的 ChatGPT 套餐调用已达到限额，请在 ChatGPT 设置 → 用量中查看。"
+        "subscription_sharing_usage_limit_exceeded" -> "ChatGPT 套餐或此应用的调用限额已达到，请在 ChatGPT 设置 → 用量中查看适用限额。"
         "subscription_sharing_usage_unavailable", "subscription_sharing_user_unavailable" -> "ChatGPT 套餐服务暂时不可用，账号已保留，请稍后重试。"
         "subscription_sharing_unsupported_capability" -> "ChatGPT 套餐不支持此模型、参数或工具能力，请调整请求后重试。"
         "subscription_sharing_route_not_supported" -> "ChatGPT 套餐不支持此调用路径。"

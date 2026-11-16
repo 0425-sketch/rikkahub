@@ -11,14 +11,17 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.core.ReasoningLevel
+import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.OAuthCredential
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.providers.openai.ResponseAPI
+import me.rerere.ai.provider.providers.openai.ResponseProviderCapabilities
 import me.rerere.ai.provider.supportsBuiltInSearch
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.util.json
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
@@ -34,7 +37,7 @@ class ChatGPTProviderTest {
         messages: List<UIMessage>,
         params: TextGenerationParams,
         sessionId: String? = "session-1",
-    ) = api.buildRequestBody(CHATGPT_CAPABILITIES, messages, params.copy(sessionId = sessionId), stream = true)
+    ) = api.buildRequestBody(chatGPTCapabilities(params.model), messages, params.copy(sessionId = sessionId, reasoningLevel = ReasoningLevel.AUTO), stream = true)
 
     @Test
     fun `system prompt becomes leading developer message instead of instructions`() {
@@ -206,33 +209,34 @@ class ChatGPTProviderTest {
         val model = parseChatGPTModels("""{"models":[{"visibility":"list","slug":"reasoning-model","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}],"default_reasoning_level":"low","supports_reasoning_summary_parameter":false,"supports_search_tool":false}]}""").single()
         val restored = json.decodeFromString<Model>(json.encodeToString(model))
         assertEquals(model.chatGPTCapabilities, restored.chatGPTCapabilities)
-        val defaultBody = api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored), true)
-        // App's default OFF must not invent an unsupported `none` effort.
+        val defaultBody = api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored, reasoningLevel = ReasoningLevel.AUTO), true)
+        // AUTO preserves the service default instead of inventing an effort.
         assertNull(defaultBody["reasoning"])
         val highBody = api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored, reasoningLevel = ReasoningLevel.HIGH), true)
         assertEquals("high", highBody.getValue("reasoning").jsonObject.getValue("effort").jsonPrimitive.content)
         assertFalse("summary" in highBody.getValue("reasoning").jsonObject)
-        assertThrows(IllegalStateException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored, reasoningLevel = ReasoningLevel.MAX), true)
         }
-        assertThrows(IllegalArgumentException::class.java) {
-            api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored.copy(tools = setOf(BuiltInTools.Search))), true)
-        }
+        val savedSearchBody = api.buildRequestBody(chatGPTCapabilities(restored), listOf(UIMessage.user("hello")), TextGenerationParams(restored.copy(tools = setOf(BuiltInTools.Search)), reasoningLevel = ReasoningLevel.AUTO), true)
+        assertNull(savedSearchBody["tools"])
+        assertTrue(savedSearchBody.getValue("input").jsonArray.isNotEmpty())
     }
 
     @Test
     fun `custom body cannot reenable unsupported plan parameters`() {
-        val body = chatGPTBody(
-            listOf(UIMessage.user("hello")),
-            TextGenerationParams(
-                model = Model(modelId = "available-model"),
-                customBody = listOf("temperature", "max_output_tokens", "previous_response_id", "background", "metadata")
-                    .map { CustomBody(it, JsonPrimitive("unsupported")) },
-            ),
-        )
-        assertFalse(body.keys.any { it in setOf("temperature", "max_output_tokens", "previous_response_id", "background", "metadata") })
-        assertEquals("true", body.getValue("stream").jsonPrimitive.content)
-        assertEquals("false", body.getValue("store").jsonPrimitive.content)
+        for (field in listOf("temperature", "max_output_tokens", "previous_response_id", "background", "metadata")) {
+            val error = assertThrows(IllegalArgumentException::class.java) {
+                chatGPTBody(
+                    listOf(UIMessage.user("hello")),
+                    TextGenerationParams(
+                        model = Model(modelId = "available-model"),
+                        customBody = listOf(CustomBody(field, JsonPrimitive("unsupported"))),
+                    ),
+                )
+            }
+            assertTrue(error.message.orEmpty().contains(field))
+        }
     }
 
     @Test
@@ -248,13 +252,71 @@ class ChatGPTProviderTest {
     }
 
     @Test
-    fun `unsupported hosted image tools fail before request`() {
-        assertThrows(IllegalArgumentException::class.java) {
+    fun `saved incompatible image and URL switches do not block ordinary text`() {
+        val body = chatGPTBody(
+            listOf(UIMessage.user("测试")),
+            TextGenerationParams(Model(modelId = "available-model", tools = setOf(BuiltInTools.ImageGeneration, BuiltInTools.UrlContext))),
+        )
+        assertNull(body["tools"])
+        assertEquals("测试", body.getValue("input").jsonArray.single().jsonObject.getValue("content").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `explicit advanced image tool gets a targeted error instead of silent removal`() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
             chatGPTBody(
                 listOf(UIMessage.user("draw")),
-                TextGenerationParams(Model(modelId = "available-model", tools = setOf(BuiltInTools.ImageGeneration))),
+                TextGenerationParams(
+                    Model(modelId = "available-model"),
+                    customBody = listOf(CustomBody("tools", json.parseToJsonElement("""[{"type":"image_generation"}]"""))),
+                ),
             )
         }
+        assertTrue(error.message.orEmpty().contains("image_generation"))
+        assertTrue(error.message.orEmpty().contains("高级自定义请求"))
+    }
+
+    @Test
+    fun `explicit unsupported tool choice is rejected only on ChatGPT route`() {
+        val params = TextGenerationParams(
+            Model(modelId = "available-model"),
+            customBody = listOf(CustomBody("tool_choice", json.parseToJsonElement("""{"type":"image_generation"}"""))),
+        )
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            chatGPTBody(listOf(UIMessage.user("draw")), params)
+        }
+        assertTrue(error.message.orEmpty().contains("tool_choice"))
+        assertTrue(error.message.orEmpty().contains("image_generation"))
+        val apiKeyBody = api.buildRequestBody(ResponseProviderCapabilities(), listOf(UIMessage.user("draw")), params, stream = true)
+        assertEquals("image_generation", apiKeyBody.getValue("tool_choice").jsonObject.getValue("type").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `filtering saved image generation preserves vision search and client function tools`() {
+        val imageUrl = "https://example.invalid/cat.png"
+        val body = chatGPTBody(
+            listOf(UIMessage.user("Describe").copy(parts = listOf(UIMessagePart.Text("Describe"), UIMessagePart.Image(imageUrl)))),
+            TextGenerationParams(
+                model = Model(modelId = "available-model", abilities = listOf(ModelAbility.TOOL), inputModalities = listOf(Modality.TEXT, Modality.IMAGE), tools = setOf(BuiltInTools.Search, BuiltInTools.ImageGeneration)),
+                tools = listOf(Tool(name = "mcp_example", description = "Client tool", execute = { listOf(UIMessagePart.Text("ok")) })),
+            ),
+        )
+        val contents = body.getValue("input").jsonArray.single().jsonObject.getValue("content").jsonArray
+        assertEquals(imageUrl, contents.single { it.jsonObject["type"]?.jsonPrimitive?.content == "input_image" }.jsonObject["image_url"]?.jsonPrimitive?.content)
+        val tools = body.getValue("tools").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("namespace", "web_search"), tools.map { it.getValue("type").jsonPrimitive.content })
+        assertEquals("mcp_example", tools.first().getValue("tools").jsonArray.single().jsonObject.getValue("name").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `API key Responses keeps its original hosted image and search tools`() {
+        val body = api.buildRequestBody(
+            ResponseProviderCapabilities(),
+            listOf(UIMessage.user("draw")),
+            TextGenerationParams(Model(modelId = "api-model", tools = linkedSetOf(BuiltInTools.Search, BuiltInTools.ImageGeneration))),
+            stream = true,
+        )
+        assertEquals(listOf("web_search", "image_generation"), body.getValue("tools").jsonArray.map { it.jsonObject.getValue("type").jsonPrimitive.content })
     }
 
     @Test

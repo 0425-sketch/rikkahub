@@ -5,6 +5,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 import me.rerere.ai.provider.OAuthCredential
+import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.CustomHeader
 import okhttp3.Call
@@ -18,8 +19,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ChatGPTModelCapabilities
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.providers.openai.ResponseAPI
@@ -236,7 +239,8 @@ class ChatGPTStreamTest {
     @Test
     fun `function call executes locally and result plus full history are replayed for continuation`() = runTest {
         val api = ResponseAPI(OkHttpClient())
-        val model = Model(modelId = "test-available-model", abilities = listOf(ModelAbility.TOOL))
+        // A previously saved unsupported hosted switch must not disrupt client tool round trips.
+        val model = Model(modelId = "test-available-model", abilities = listOf(ModelAbility.TOOL), tools = setOf(BuiltInTools.ImageGeneration), chatGPTCapabilities = ChatGPTModelCapabilities(reasoningEfforts = listOf("xhigh")))
         var executionCount = 0
         val increment = Tool(
             name = "increment",
@@ -254,9 +258,10 @@ class ChatGPTStreamTest {
                 listOf(UIMessagePart.Text((input.jsonObject.getValue("x").jsonPrimitive.int + 1).toString()))
             },
         )
-        val params = TextGenerationParams(model = model, tools = listOf(increment), sessionId = "local-test")
+        val params = TextGenerationParams(model = model, tools = listOf(increment), sessionId = "local-test", reasoningLevel = ReasoningLevel.XHIGH)
         var history = listOf(UIMessage.system("Use the client tool."), UIMessage.user("Increment 41."))
         val firstBody = api.buildRequestBody(CHATGPT_CAPABILITIES, history, params, stream = true)
+        assertEquals("xhigh", firstBody.getValue("reasoning").jsonObject.getValue("effort").jsonPrimitive.content)
         val namespace = firstBody.getValue("tools").jsonArray.single().jsonObject
         assertEquals("namespace", namespace.getValue("type").jsonPrimitive.content)
         assertEquals("rikkahub", namespace.getValue("name").jsonPrimitive.content)
@@ -289,6 +294,8 @@ class ChatGPTStreamTest {
         // A restart/history reload must preserve enough information for the next stateless request.
         history = json.decodeFromString<List<UIMessage>>(json.encodeToString(history))
         val nextBody = api.buildRequestBody(CHATGPT_CAPABILITIES, history, params, stream = true)
+        assertEquals(firstBody["reasoning"], nextBody["reasoning"])
+        assertEquals(firstBody["prompt_cache_key"], nextBody["prompt_cache_key"])
         assertEquals("false", nextBody.getValue("store").jsonPrimitive.content)
         assertEquals("true", nextBody.getValue("stream").jsonPrimitive.content)
         assertFalse("previous_response_id" in nextBody)
@@ -394,7 +401,7 @@ class ChatGPTStreamTest {
         )
         try {
             val first = withTimeout(5_000) {
-                provider.streamText(setting, listOf(UIMessage.user("hello")), TextGenerationParams(Model(modelId = "available-model"))).first()
+                provider.streamText(setting, listOf(UIMessage.user("hello")), TextGenerationParams(Model(modelId = "available-model"), reasoningLevel = ReasoningLevel.AUTO)).first()
             }
             assertTrue(first is StreamChunk.TextStart)
             assertTrue("HTTP call was not cancelled", cancelled.await(5, TimeUnit.SECONDS))
