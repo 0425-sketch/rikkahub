@@ -1901,4 +1901,7 @@
   <string name="setting_provider_page_chatgpt_cache_diagnostics_export">Save redacted cache diagnostics</string>
   <string name="setting_provider_page_chatgpt_cache_diagnostics_desc">Saves this account’s latest 40 requests from the current app session: token statistics and request fingerprints, without messages or credentials. Records are discarded when the app process ends and are never uploaded automatically.</string>
   <string name="app_personal_name">RikkaHub Personal</string>
+  <string name="cache_usage_context_pending">Context stats pending</string>
+  <string name="cache_usage_read_pending_short">Cache stats pending</string>
+  <string name="cache_usage_pending">Statistics pending</string>
 </resources>

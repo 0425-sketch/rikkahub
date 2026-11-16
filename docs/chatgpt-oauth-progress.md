@@ -1,8 +1,10 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-**当前状态（2026-11-17 Asia/Singapore）：新版固定签名APK已交付就绪，实际公开下载核验完成。** 用户已授权独立包名并存；长期签名及恢复副本已安全保存，两个干净runner实际恢复构建同包同证书，Actions43909609310和Release发布成功，root再次无令牌下载APK并核验通过。全部缓存/工具/思考/搜索/迁移修复已保留；真实缓存命中及部分功能仍需正常真机验证，未虚报。旧签名调查已停止，不再等待配置；详细版本、链接、测试及证据见末尾。恢复时仍先核对本文件、Git与相关运行结果。
+**当前状态（2026-11-17 Asia/Singapore）：personal.1固定签名APK已交付；正在处理用户真实样本中的生成中统计显示，准备personal.2同包同签名覆盖更新。** 长期签名及恢复副本已安全保存且已实际恢复核验；本次不得重新生成。真实13次请求确认可观缓存读取，当前修复只区分等待统计与终态缺失，保留全部OAuth/工具/思考/搜索/迁移成果。旧签名调查已停止，不再等待配置；具体证据、待办及构建状态见末尾。恢复时先读本文件、核对Git与相关运行结果。
 
 **当前缓存专项重点：** 读取官方 DevKit issue 9 与 OpenClaw issue 197532 及最新评论/关联PR，核对下划线 HTTP 头 `session_id`、旧连字符头 `session-id`、JSON `prompt_cache_key` 的实际请求与服务端回值；不得混用或将第三方命中改善当作本应用真实验证。
+
+**最新真机反馈正在处理：** 已收到用户13次完成请求的脱敏诊断，确认此样本真实缓存读取率85.9%，会话及服务端键稳定。生成中“上下文未知/缓存未知”是未区分等待终态用量的UI文案；正在做最小显示修复并沿固定签名流程交付覆盖更新，详见末尾。
 
 ## 目标、范围与验收
 
@@ -404,3 +406,24 @@
 - delivery_review独立核对两job日志的Worker ID与runner_id均不同；实际apksigner/aapt2输出包名、版本、证书、minSdk、ABI一致，两份APK的SHA-256也相同。交付artifact14247109389仅4份公开JSON，已下载校验并与真实jobs和metadata交叉一致；证据/workspace/work/actions-43909609310/delivery-review/independent-signing-delivery.json，primary-complete.log、backup-complete.log、publish-complete.log。
 - publish日志明确确认一次性RIKKAHUB_SIGNING_SETUP_TOKEN已成功删除并查询确认，不是空值/404跳过。主用RIKKAHUB_PERSONAL_SIGNING与恢复RIKKAHUB_PERSONAL_SIGNING_BACKUP保留；用户PAT本体未撤销，按其有效期到期。没有要求用户额外工程操作。
 - root公开APK二次下载校验也已完成，已满足本轮交付标准。所有产品源码、固定公开证书和自动交付流程已提交推送；本次最终记录随后提交，实际文档HEAD以git log为准。后续新版必须递增版本并继续复用该持久签名和公开pin，不重新生成签名。
+
+## 新真机证据与生成中统计显示修复（2026-11-17）
+
+- 从实际Git干净HEAD dd60ec64恢复。用户提供诊断JSON及生成中/完成后截图，报告缓存表现可观，但流式及工具循环中暂时显示上下文未知/缓存未知，完成后正常。原始用户文件仅保留在私有工作区附件，不提交仓库，不公开会话/账号摘要或聊天内容。
+- 已解析JSON的data.requests：13/13 completed，模型gpt-6-astra、请求effort=xhigh，所有终态均报告input/cached，服务端cache_write_tokens明确为0；没有终态字段缺失或重试。input合计1,399,570，cached合计1,202,560，加权读取率85.9235%；首个请求cached=0，后续12次均有真实缓存读取。
+- 最后请求input=199,754/cached=175,872，读取率88.0443%；cached与截图175.9K吻合。截图上下文202.9K按现有UI包含输入+输出；当前诊断未导出output_tokens，不能仅据该文件精确复算该显示总量。所有请求session_id头、body缓存键、服务端实际返回键各自唯一稳定，13次返回键均匹配session_id头。此为用户真实样本，不再仅有mock证据；不能据单一样本承诺所有请求命中或定量证明相对旧OAuth提升。
+- 代码已定位：Responses终态才提供用量；AgentLoop在当前HTTP请求尚无usage时保留空TokenUsage避免借用上一轮；NerdLine没有接收父组件已有loading，因而将“等待本轮统计”和“完成后仍未提供”都显示未知。数据未被清零，终态回来后正常，符合截图与日志。
+- 最小修复范围：仅App显示层传入当前消息loading；缺失字段且正在生成显示统计待更新，真实字段包括明确0照常显示，停止/失败/完成后仍缺失显示未知；详情与行内一致。不修改OAuth、session_id/cache_key、AI usage/DB、工具执行或Bing。stream_usage_ui代理实现UI/helper/文案及少量回归测试，root负责整合、版本200/personal.2、测试、固定签名Actions及新APK下载。
+
+### 显示修改完成，本地验证及既有测试夹具排查
+
+- 分支仍custom-3.2.0，基线dd60ec64；此阶段产品/测试/版本修改尚未提交。新增5项显示测试均已通过，覆盖工具步切换不借用旧统计、终态前后、停止/重载、明确0和部分字段；Python发布/签名门禁34/34通过。完整assembleGithubDebug已成功，版本200/personal.2，包名及公开签名pin未改。日志/workspace/work/personal2-app-tests-build-2.log及personal2-python-tests.log。
+- 完整App590项中既有ProviderAccountManagerTest的取消后保存测试超时，单类11项与单方法复测亦可重复；没有用此前通过记录掩盖当前失败。代码证据为SettingsStore先更新内存flow再进行NonCancellable持久化，测试一看到内存值就同时取消DataStore/appScope，未等落盘。私有线程转储无仍阻塞的HTTP/latch；auth_test_timeout代理正在以仅测试的持久化等待修正验证该teardown竞争，不加长超时、不改OAuth产品逻辑。
+- 下一步：完成单项/单类和App全量复测→提交推送本次显示及版本改动→现有Actions双独立持久签名恢复构建→Release→实际公开下载核验新APK与旧personal.1同包同证书、versionCode递增。未发布personal.2前不得把本地debug候选称为交付。
+
+### 本地最终验证通过，准备提交固定签名更新
+
+- 最终测试夹具修正仅在ProviderAccountManagerTest：分离manager与DataStore scope，在关闭DataStore前10秒内等待真实刷新任务自然结束，保留取消者先join再释放HTTP、30秒timeout，并新建scope重开同一磁盘文件验证access/refresh均已保存。没有额外store.update代替被测代码写盘；产品OAuth/SettingsStore未改。此前主动写入屏障方案已撤回，不应恢复。
+- 既有取消测试由可重复30秒超时变为0.024秒通过，整类11/11通过（/workspace/work/personal2-auth-natural-persist-class.log）。最终全量App590/590，failure/error/skipped全部0，84份XML，BUILD SUCCESSFUL in 13s（/workspace/work/personal2-app-tests-final.log）。新增5项均包括在590中；Python34/34与完整assemble已通过，未改模块由即将触发的CI全量再次验证。
+- delivery_review独立只读审阅确认：产品差异只在显示层，包名me.rerere.rikkahub.personal与固定证书pin均未变，Gradle及publisher一致为200/3.2.0-personal.2，Release文案未把UI修复宣称为缓存命中提升。git diff --check通过，ai/oauth/search/数据库/协议/工具代码零差异。
+- 即将提交推送本次代码、测试、版本与记录，触发既有chatgpt-test-apk.yml；不会触发重新生成签名，不需要setup Secret。当前尚无personal.2的Actions结果或Release。

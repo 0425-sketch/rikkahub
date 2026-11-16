@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 199
-VERSION_NAME = "3.2.0-personal.1"
+VERSION_CODE = 200
+VERSION_NAME = "3.2.0-personal.2"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 
@@ -216,15 +216,16 @@ def main():
     provenance.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     notes = args.output / "release-notes.txt"
     notes.write_text(
-        "RikkaHub 3.2.0 — 自用固定签名修复版\n\n"
+        "RikkaHub 3.2.0 — 生成中用量显示修复版\n\n"
         f"源码： https://github.com/{REPO}/commit/{source_sha}\n"
         f"Actions： {metadata['actions_url']}\n\n"
-        "ARM64，Android 8.0 及以上。独立包名，与之前的ChatGPT测试版并存，保留旧应用及数据。\n"
+        "ARM64，Android 8.0 及以上。与RikkaHub 自用personal.1同包同签名，版本号递增，可直接覆盖安装并保留聊天和登录。\n"
         "长期签名已保存为GitHub Actions加密主用与恢复副本，并在两个独立runner中恢复、构建和核验证书一致。\n"
         "恢复副本位于同一仓库的Secret存储，不是跨平台灾备。后续此包名更新固定复用该证书。\n\n"
-        "迁移：旧版 设置→数据备份→本地，勾选聊天记录和文件导出ZIP；新版同页导入并重启，然后重新登录ChatGPT。\n"
-        "本次包含工具设置兼容、思考参数、Bing网络、跨包附件、SIWC稳定session_id请求头和缓存统计/脱敏诊断修复。\n"
-        "套餐原生生图仍不支持；未实现应用内真实套餐余额；缓存实际命中仍须查看手机服务端返回，未宣称已恢复。\n\n"
+        "已安装RikkaHub 自用的用户无需再次迁移或重新登录。首次从更旧的ChatGPT测试版迁移，仍可用设置→数据备份→本地导出/导入ZIP后授权。\n"
+        "本次仅修复生成期间的用量显示：当前请求还未返回统计时显示待更新，完成后仍缺失才显示未知；已报告的数值（包括0）照常显示。\n"
+        "保留已跑通的SIWC OAuth、稳定session_id、真实缓存统计和全部既有修复，不修改请求、工具执行或计量。用户真机样本已确认缓存实际命中，不承诺每次请求的命中率。\n"
+        "套餐原生生图仍不支持；未实现应用内真实套餐余额。\n\n"
         f"APK SHA-256: `{metadata['apk_sha256']}`\n"
         f"证书 SHA-256: `{metadata['certificate_sha256']}`\n",
         encoding="utf-8",

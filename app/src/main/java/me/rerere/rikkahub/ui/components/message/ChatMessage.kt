@@ -245,7 +245,7 @@ fun ChatMessage(
         )
 
         ProvideTextStyle(textStyle) {
-            ChatMessageNerdLine(message = message)
+            ChatMessageNerdLine(message = message, generating = loading)
         }
 
     }

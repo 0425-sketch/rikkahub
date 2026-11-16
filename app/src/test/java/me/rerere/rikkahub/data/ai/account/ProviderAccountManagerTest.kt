@@ -45,20 +45,33 @@ class ProviderAccountManagerTest {
     private fun rotated() = """{"access_token":"new-access","refresh_token":"new-refresh","expires_in":3600}"""
     private suspend fun withManager(
         respond: (Request) -> Response,
+        settingsFile: File = File(temp.newFolder(), "settings.preferences_pb"),
         block: suspend (SettingsStore, ProviderAccountManager, ProviderSetting.ChatGPT) -> Unit,
     ) {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val storeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
-            val store = SettingsStore(PreferenceDataStoreFactory.create(scope = scope) {
-                File(temp.newFolder(), "settings.preferences_pb")
-            }, scope)
+            val store = SettingsStore(PreferenceDataStoreFactory.create(scope = storeScope) {
+                settingsFile
+            }, storeScope)
             val provider = ProviderSetting.ChatGPT(credential = original,
                 chatGPTRegistration = ChatGPTRegistration("oaiapp_test", subject = "subject"))
             store.update { it.copy(providers = listOf(provider)) }
             val client = OkHttpClient.Builder().addInterceptor { respond(it.request()) }.build()
-            block(store, ProviderAccountManager(store, scope, client), provider)
+            block(store, ProviderAccountManager(store, managerScope, client), provider)
+            // Observing settingsFlow only proves the in-memory update. Let the actual refresh
+            // finish its disk write before closing DataStore, without writing on its behalf.
+            withTimeout(10_000) {
+                managerScope.coroutineContext.job.children.toList().joinAll()
+            }
         } finally {
-            scope.coroutineContext.job.cancelAndJoin()
+            withContext(NonCancellable) {
+                try {
+                    managerScope.coroutineContext.job.cancelAndJoin()
+                } finally {
+                    storeScope.coroutineContext.job.cancelAndJoin()
+                }
+            }
         }
     }
 
@@ -85,19 +98,32 @@ class ProviderAccountManagerTest {
     fun `rotation is saved even after the requesting chat is cancelled`() = runBlocking {
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
+        val settingsFile = File(temp.newFolder(), "settings.preferences_pb")
         withManager({ request ->
             started.countDown()
             check(release.await(10, TimeUnit.SECONDS))
             response(request, rotated())
-        }) { store, manager, provider ->
+        }, settingsFile) { store, manager, provider ->
             val caller = launch { manager.getCredential(provider, null) }
             withContext(Dispatchers.IO) { assertTrue(started.await(10, TimeUnit.SECONDS)) }
             caller.cancelAndJoin()
+            assertTrue(caller.isCancelled)
             release.countDown()
             val saved = withTimeout(10_000) {
                 store.settingsFlow.first { (it.providers.single { it.id == provider.id } as ProviderSetting.ChatGPT).credential?.refreshToken == "new-refresh" }
             }
             assertEquals("new-access", (saved.providers.single { it.id == provider.id } as ProviderSetting.ChatGPT).credential?.accessToken)
+        }
+        val restoredScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val restoredStore = SettingsStore(PreferenceDataStoreFactory.create(scope = restoredScope) {
+                settingsFile
+            }, restoredScope)
+            val restored = restoredStore.awaitLoaded().providers.filterIsInstance<ProviderSetting.ChatGPT>().single().credential
+            assertEquals("new-access", restored?.accessToken)
+            assertEquals("new-refresh", restored?.refreshToken)
+        } finally {
+            restoredScope.coroutineContext.job.cancelAndJoin()
         }
     }
 

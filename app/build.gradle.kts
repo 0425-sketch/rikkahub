@@ -180,11 +180,11 @@ androidComponents {
         // Durable signing and two clean restore builds are required before publication.
         variant.applicationId.set("me.rerere.rikkahub.personal")
         variant.outputs.forEach { output ->
-            output.versionCode.set(199)
-            output.versionName.set("3.2.0-personal.1")
+            output.versionCode.set(200)
+            output.versionName.set("3.2.0-personal.2")
         }
-        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-personal.1\"", null))
-        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"199\"", null))
+        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-personal.2\"", null))
+        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"200\"", null))
         android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
             variant.signingConfig?.from(signingConfig)
         }

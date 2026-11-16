@@ -22,7 +22,7 @@ class PublishReached(Exception):
 
 class ChatGPTReleaseSigningTest(unittest.TestCase):
     def metadata(self, certificate=CERT, **changes):
-        return {"application_id": release.PACKAGE, "version_code": 199, "version_name": release.VERSION_NAME,
+        return {"application_id": release.PACKAGE, "version_code": release.VERSION_CODE, "version_name": release.VERSION_NAME,
                 "min_sdk": 26, "architectures": ["arm64-v8a"], "certificate_sha256": certificate,
                 "fixed_certificate_matches": True, "apk_sha256": "0" * 64, "apk_size": 10, **changes}
 
@@ -74,7 +74,7 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
             gh.assert_not_called()
 
     def test_old_package_or_wrong_version_cannot_publish(self):
-        for change in ({"application_id": "me.rerere.rikkahub.chatgpt.debug"}, {"version_code": 198}):
+        for change in ({"application_id": "me.rerere.rikkahub.chatgpt.debug"}, {"version_code": release.VERSION_CODE - 1}):
             with tempfile.TemporaryDirectory() as tmp, patch.object(release.delivery, "gh") as gh:
                 with self.assertRaisesRegex(release.delivery.DeliveryError, "SIGNING_IDENTITY"):
                     self.invoke(Path(tmp), primary=self.metadata(**change))

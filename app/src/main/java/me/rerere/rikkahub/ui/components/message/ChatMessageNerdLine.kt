@@ -66,12 +66,13 @@ fun ChatMessageNerdLine(
     message: UIMessage,
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f),
+    generating: Boolean = false,
 ) {
     val settings = LocalSettings.current
     val usage = message.usage
     if (!settings.displaySetting.showTokenUsage || usage == null) return
 
-    val stats = remember(message) { message.nerdStats(usage) }
+    val stats = remember(message, generating) { message.nerdStats(usage, generating) }
     // 消息里的模型快照不带上下文窗口，只能从设置里按 ID 找；模型被删了就不显示窗口大小
     val contextLength = remember(settings.providers, message.modelId) {
         settings.findModelById(message.modelId)?.contextLength?.takeIf { it > 0 }
@@ -117,12 +118,16 @@ fun ChatMessageNerdLine(
                     StatsItem(
                         icon = { StatsIcon(HugeIcons.Layers01, stringResource(R.string.chat_message_usage_context)) },
                         content = {
-                            Text(text = if (stats.lastUsage.promptTokensReported) {
-                                stringResource(R.string.chat_message_usage_context_short, stats.contextTokens.formatNumber())
-                            } else stringResource(R.string.cache_usage_context_unknown))
-                            Text(text = if (stats.lastUsage.cachedTokensReported) {
-                                stringResource(R.string.chat_message_usage_cached_short, stats.lastUsage.cachedTokens.formatNumber())
-                            } else stringResource(R.string.cache_usage_read_unknown_short))
+                            Text(text = when (stats.contextStatus) {
+                                UsageValueStatus.Reported -> stringResource(R.string.chat_message_usage_context_short, stats.contextTokens.formatNumber())
+                                UsageValueStatus.Pending -> stringResource(R.string.cache_usage_context_pending)
+                                UsageValueStatus.Unknown -> stringResource(R.string.cache_usage_context_unknown)
+                            })
+                            Text(text = when (stats.cacheReadStatus) {
+                                UsageValueStatus.Reported -> stringResource(R.string.chat_message_usage_cached_short, stats.lastUsage.cachedTokens.formatNumber())
+                                UsageValueStatus.Pending -> stringResource(R.string.cache_usage_read_pending_short)
+                                UsageValueStatus.Unknown -> stringResource(R.string.cache_usage_read_unknown_short)
+                            })
                         }
                     )
                 }
@@ -141,12 +146,13 @@ private fun UsageDetails(stats: NerdStats, contextLength: Int?) {
         ContextUsageBar(
             lastUsage = stats.lastUsage,
             contextLength = contextLength,
+            generating = stats.generating,
             modifier = Modifier.padding(bottom = 8.dp),
         )
-        UsageDetailRow(stringResource(R.string.cache_usage_last_read), cacheReadValue(stats.lastUsage))
+        UsageDetailRow(stringResource(R.string.cache_usage_last_read), cacheReadValue(stats.lastUsage, stats.generating))
         UsageDetailRow(
             stringResource(R.string.cache_usage_last_write),
-            stats.lastUsage.cacheWriteTokens?.exact() ?: stringResource(R.string.cache_usage_unknown),
+            stats.lastUsage.cacheWriteTokens?.exact() ?: missingUsageValue(stats.generating),
         )
         if (stats.steps > 1) {
             UsageDetailRow(stringResource(R.string.chat_message_usage_step_count), stats.steps.toString())
@@ -155,13 +161,13 @@ private fun UsageDetails(stats: NerdStats, contextLength: Int?) {
                 when {
                     total.promptTokensReported -> total.promptTokens.exact()
                     total.promptTokens > 0 -> stringResource(R.string.cache_usage_partial, total.promptTokens.exact())
-                    else -> stringResource(R.string.cache_usage_unknown)
+                    else -> missingUsageValue(stats.generating)
                 },
             )
-            UsageDetailRow(stringResource(R.string.chat_message_usage_total_cached), cacheReadValue(total))
+            UsageDetailRow(stringResource(R.string.chat_message_usage_total_cached), cacheReadValue(total, stats.generating))
             UsageDetailRow(
                 stringResource(R.string.cache_usage_total_write),
-                total.cacheWriteTokens?.exact() ?: stringResource(R.string.cache_usage_unknown),
+                total.cacheWriteTokens?.exact() ?: missingUsageValue(stats.generating),
             )
             UsageDetailRow(stringResource(R.string.chat_message_usage_total_output), total.completionTokens.exact())
         }
@@ -171,11 +177,16 @@ private fun UsageDetails(stats: NerdStats, contextLength: Int?) {
 }
 
 @Composable
-private fun cacheReadValue(usage: TokenUsage): String = when {
+private fun cacheReadValue(usage: TokenUsage, generating: Boolean): String = when {
     usage.cachedTokensReported -> usage.cachedTokens.exact()
     usage.cachedTokens > 0 -> stringResource(R.string.cache_usage_partial, usage.cachedTokens.exact())
-    else -> stringResource(R.string.cache_usage_unknown)
+    else -> missingUsageValue(generating)
 }
+
+@Composable
+private fun missingUsageValue(generating: Boolean): String = stringResource(
+    if (generating) R.string.cache_usage_pending else R.string.cache_usage_unknown,
+)
 
 private data class UsageSegment(val label: String, val tokens: Int, val color: Color)
 
@@ -186,10 +197,11 @@ private data class UsageSegment(val label: String, val tokens: Int, val color: C
 private fun ContextUsageBar(
     lastUsage: TokenUsage,
     contextLength: Int?,
+    generating: Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (!lastUsage.promptTokensReported) {
-        UsageDetailRow(stringResource(R.string.chat_message_usage_context), stringResource(R.string.cache_usage_unknown))
+        UsageDetailRow(stringResource(R.string.chat_message_usage_context), missingUsageValue(generating))
         UsageDetailRow(stringResource(R.string.chat_message_usage_output), lastUsage.completionTokens.exact())
         return
     }
@@ -323,16 +335,28 @@ fun StatsItem(
     }
 }
 
-private data class NerdStats(
+internal enum class UsageValueStatus { Reported, Pending, Unknown }
+
+internal data class NerdStats(
     val total: TokenUsage,
     val lastUsage: TokenUsage,
     val steps: Int,
     val contextTokens: Int,
     val durationMillis: Long?,
     val tps: Float?,
-)
+    val generating: Boolean,
+) {
+    val contextStatus: UsageValueStatus get() = status(lastUsage.promptTokensReported)
+    val cacheReadStatus: UsageValueStatus get() = status(lastUsage.cachedTokensReported)
 
-private fun UIMessage.nerdStats(usage: TokenUsage): NerdStats {
+    private fun status(reported: Boolean): UsageValueStatus = when {
+        reported -> UsageValueStatus.Reported
+        generating -> UsageValueStatus.Pending
+        else -> UsageValueStatus.Unknown
+    }
+}
+
+internal fun UIMessage.nerdStats(usage: TokenUsage, generating: Boolean = false): NerdStats {
     val last = lastRequestUsage() ?: usage
     // 旧消息没有记录生成耗时，退回用创建到完成的总时长估算
     val durationMillis = finishedAt?.let { finishedAt ->
@@ -348,6 +372,7 @@ private fun UIMessage.nerdStats(usage: TokenUsage): NerdStats {
         contextTokens = last.promptTokens + last.completionTokens,
         durationMillis = durationMillis,
         tps = durationMillis?.let { usage.completionTokens.toFloat() / it * 1000 },
+        generating = generating,
     )
 }
 

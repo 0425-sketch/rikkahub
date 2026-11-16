@@ -1903,4 +1903,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_chatgpt_cache_diagnostics_export">保存脱敏缓存诊断</string>
   <string name="setting_provider_page_chatgpt_cache_diagnostics_desc">保存当前账号在本次应用运行期间最近 40 次请求的用量和请求摘要，不含聊天正文或凭据。应用进程结束后记录即清除，不会自动上传。</string>
   <string name="app_personal_name">RikkaHub 自用</string>
+  <string name="cache_usage_context_pending">上下文统计待更新</string>
+  <string name="cache_usage_read_pending_short">缓存统计待更新</string>
+  <string name="cache_usage_pending">统计待更新</string>
 </resources>
