@@ -371,3 +371,8 @@
 - 实际下载公开artifact14246827289，772字节，ZIP SHA-256 `3a1685ad2026b9cb630257bd856761b648a5d173c94c88c20f2cc9bcc68e3839` 与GitHub digest一致；仅含signing-identity.json和signing-persistence.json。保存/workspace/work/actions-43909232185/。
 - 公开证书SHA-256 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`，包名me.rerere.rikkahub.personal；已核对两回执一致并固定docs/chatgpt-personal-signing.json。此公开指纹不是私钥。副本为同仓库vault内独立Secret，仍不宣称异地灾备。
 - 回执restoration_verified:false准确表示尚未完成实际恢复。下一提交只固定公开pin并触发全新main workflow，使排队快照能读取刚保存的两Secret；两个独立runner实际构建和发布门禁通过前不交付APK。
+
+### 已固定签名，干净构建运行中
+
+- 公开pin已提交推送7cb3b57c9c39bd674a836ffd355c9fe231db803f。主Actions43909609310（https://github.com/0425-sketch/rikkahub/actions/runs/43909609310）已启动，head SHA匹配；signing-state job133447603667成功识别pin，validate job133447603131正在执行全套验证，Python门禁已过。
+- root负责主流程和最终公开APK独立下载；delivery_review代理只读监看各job，结束后独立下载测试报告/公开恢复证据核对。主/备份实际restore仍未执行，不能提前宣称复用验证通过。bootstrap成功完整日志已保存/workspace/work/actions-43909232185/bootstrap-complete.log，未公开私密材料。
