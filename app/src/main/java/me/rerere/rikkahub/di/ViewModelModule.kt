@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.di
 
+import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.ui.pages.assistant.AssistantVM
 import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantDetailVM
 import me.rerere.rikkahub.ui.pages.backup.BackupVM
@@ -36,7 +37,7 @@ val viewModelModule = module {
             settingsStore = get(),
             chatService = get(),
             updateChecker = get(),
-            analytics = get(),
+            analytics = if (BuildConfig.DEBUG) null else get(),
             filesManager = get(),
             favoriteRepository = get(),
             backgroundShellManager = get(),

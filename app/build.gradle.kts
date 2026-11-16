@@ -1,4 +1,6 @@
 import com.android.build.api.dsl.Packaging
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import com.google.gms.googleservices.GoogleServicesTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.FileInputStream
@@ -84,6 +86,10 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+                nativeSymbolUploadEnabled = false
+            }
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
@@ -139,6 +145,14 @@ android {
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")
         compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
         compilerOptions.optIn.add("androidx.navigation3.runtime.ExperimentalNavigation3Api")
+    }
+}
+
+// Personal debug builds do not initialize Firebase or need a Firebase project config.
+// Release variants still require their real google-services.json.
+tasks.withType<GoogleServicesTask>().configureEach {
+    if (name.endsWith("DebugGoogleServices")) {
+        enabled = false
     }
 }
 
