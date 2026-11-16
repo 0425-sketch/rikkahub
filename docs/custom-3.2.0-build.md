@@ -45,3 +45,18 @@ Java HTTPS 客户端及 Gradle 均可解析。未更换仓库或依赖版本，�
 
 可使用 SDK 的 `apksigner verify --verbose --print-certs` 和 `aapt2 dump badging`
 检查生成 APK 的签名、包名、版本和 ABI。安装及运行验证需要连接兼容的 Android 设备。
+
+## 真机验证状态
+
+根据用户于 2026-11-16 的手机测试反馈，当前 ARM64 Debug APK 的状态为：
+**真机安装和启动验证已通过**。
+
+- 已成功安装并启动，能正常进入主界面、展开侧栏。
+- 聊天请求尚未验证。
+- OAuth 尚未验证，暂不修改。
+- 顶部“开发模式”是 Debug 构建的正常标识，暂时保留。
+
+本次验证对应构建提交 `165829bb69672b4872d9016b035ab77f5068ef9c`，
+APK SHA-256 为 `6f93a66b393c050b61ed6001c0dbf3c259997ce786418a4f4e7137cf7b2ceb4d`。
+APK 已由交付提交 `99475b78e68ab0f6d30a0ea2ce0fd2b5fbbfc156` 推送到开发分支；
+保留该历史，不强制改写。此次仅更新验证记录，不重新构建 APK。
