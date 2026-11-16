@@ -88,3 +88,9 @@
 - `Prepare Android SDK packages` 实际错误：`sdkmanager: command not found`（exit127），不是平台版本缺失。构建/发布步骤未执行；完整日志 `/workspace/work/actions-43873871407/job-133321738399-complete.log`。
 - 已修workflow：先用固定提交的 `android-actions/setup-android` 设置命令行工具与PATH，使用现有本地验证过的tools23.0/build16111833，再安装所需包；移除重复license管道。YAML解析与diff检查通过。此修复不改已测试的应用代码。
 - 不重复运行原样失败流程。下一步提交必要workflow修复并自动触发新运行，记录确切新源码SHA。
+
+## 阶段更新：SDK修复后的第二次Actions
+
+- 修复已提交推送：`7e30d7d4d0b5e3e5201c8c8407737da51dbeb45b`。
+- 新运行：`https://github.com/0425-sketch/rikkahub/actions/runs/43874333358`，已确认 `in_progress`，head SHA匹配。上一失败记录保留，不复用旧APK。
+- 应用代码与本地876项通过的测试相同；第二次Actions仍需自行完成检查、构建、发布与下载验证。
