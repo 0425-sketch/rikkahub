@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ProgressIndicatorDefaults
 import androidx.compose.material3.Icon
@@ -18,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,11 +37,9 @@ import me.rerere.ui.toast.ToastType
 import me.rerere.ai.provider.ClaudePromptCacheTtl
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.ProviderQuota
-import me.rerere.ai.provider.UsageWindow
 import me.rerere.ai.provider.supportsQuota
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.account.AccountLoginStatus
-import me.rerere.rikkahub.data.ai.account.ChatGPTAuth
 import me.rerere.oauth.CustomTabsOAuthAuthorizationLauncher
 import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
 import me.rerere.rikkahub.data.datastore.DEFAULT_PROVIDERS
@@ -119,8 +120,8 @@ fun ProviderConfigure(
                 provider = provider,
                 onEdit = onEdit,
                 serviceName = "ChatGPT",
-                plan = provider.credential?.plan?.let { "ChatGPT ${ChatGPTAuth.planDisplayName(it)}" },
-                disclaimer = stringResource(R.string.setting_provider_page_chatgpt_disclaimer),
+                plan = null,
+                disclaimer = stringResource(R.string.setting_provider_page_chatgpt_official_disclaimer),
             )
 
             is ProviderSetting.Grok -> ProviderConfigureAccount(
@@ -397,7 +398,8 @@ private fun ProviderConfigureAccount(
                 },
                 headlineContent = { Text(stringResource(R.string.setting_provider_page_sign_out)) },
             )
-        } else if (status is AccountLoginStatus.DeviceCode) {
+        }
+        if (status is AccountLoginStatus.DeviceCode) {
             item(
                 onClick = { CustomTabsOAuthAuthorizationLauncher.launch(context, status.verificationUrl) },
                 leadingContent = { ContainedLoadingIndicator(modifier = Modifier.size(40.dp)) },
@@ -423,20 +425,41 @@ private fun ProviderConfigureAccount(
                 supportingContent = { Text(stringResource(R.string.setting_provider_page_waiting_authorization_desc)) },
                 headlineContent = { Text(stringResource(R.string.setting_provider_page_waiting_authorization)) },
             )
-        } else {
+        } else if (credential == null || provider is ProviderSetting.ChatGPT) {
             item(
-                onClick = { accountManager.startLogin(provider.id, context) },
+                onClick = {
+                    accountManager.startLogin(
+                        provider.id,
+                        context,
+                        requestPlanConsent = provider is ProviderSetting.ChatGPT &&
+                            credential?.isOfficialChatGPT == true && credential.pendingRefresh == null &&
+                            !credential.hasChatGPTPlanAccess,
+                    )
+                },
                 leadingContent = { CardGroupIcon(HugeIcons.Login03) },
                 supportingContent = (status as? AccountLoginStatus.Failed)?.let { failed ->
                     { Text(failed.message, color = MaterialTheme.colorScheme.error) }
                 },
                 trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
-                headlineContent = { Text(stringResource(R.string.setting_provider_page_sign_in_with, serviceName)) },
+                headlineContent = {
+                    Text(
+                        when {
+                            provider !is ProviderSetting.ChatGPT -> stringResource(R.string.setting_provider_page_sign_in_with, serviceName)
+                            credential?.isOfficialChatGPT == true && credential.pendingRefresh == null &&
+                                !credential.hasChatGPTPlanAccess ->
+                                stringResource(R.string.setting_provider_page_chatgpt_enable_plan)
+                            credential != null -> stringResource(R.string.setting_provider_page_chatgpt_reauthorize)
+                            else -> stringResource(R.string.setting_provider_page_chatgpt_continue)
+                        }
+                    )
+                },
             )
         }
     }
 
-    if (provider.supportsQuota) {
+    if (provider is ProviderSetting.ChatGPT) {
+        ChatGPTPlanStatus(provider)
+    } else if (provider.supportsQuota) {
         AccountUsage(provider)
     }
 
@@ -446,6 +469,56 @@ private fun ProviderConfigureAccount(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 4.dp),
     )
+}
+
+@Composable
+private fun ChatGPTPlanStatus(provider: ProviderSetting.ChatGPT) {
+    val context = LocalContext.current
+    val credential = provider.credential
+    var showWelcome by remember(provider.id) { mutableStateOf(false) }
+    LaunchedEffect(credential?.clientId, credential?.hasChatGPTPlanAccess) {
+        if (credential?.hasChatGPTPlanAccess == true) {
+            val preferences = context.getSharedPreferences("chatgpt_plan_ui", android.content.Context.MODE_PRIVATE)
+            val key = "welcomed_${credential.clientId}"
+            if (!preferences.getBoolean(key, false)) {
+                preferences.edit().putBoolean(key, true).apply()
+                showWelcome = true
+            }
+        }
+    }
+    if (showWelcome) {
+        AlertDialog(
+            onDismissRequest = { showWelcome = false },
+            title = { Text(stringResource(R.string.setting_provider_page_chatgpt_plan_enabled)) },
+            text = { Text(stringResource(R.string.setting_provider_page_chatgpt_usage_hint)) },
+            confirmButton = {
+                TextButton(onClick = { showWelcome = false }) { Text(stringResource(R.string.confirm)) }
+            },
+        )
+    }
+    val status = when {
+        credential == null -> R.string.setting_provider_page_chatgpt_signed_out
+        !credential.isOfficialChatGPT -> R.string.setting_provider_page_chatgpt_migration
+        credential.pendingRefresh != null -> R.string.setting_provider_page_chatgpt_pending_validation
+        !credential.hasChatGPTPlanAccess -> R.string.setting_provider_page_chatgpt_plan_disabled
+        else -> R.string.setting_provider_page_chatgpt_plan_enabled
+    }
+    CardGroup(title = { Text(stringResource(R.string.setting_provider_page_chatgpt_plan)) }) {
+        item(
+            leadingContent = { CardGroupIcon(HugeIcons.UserCircle) },
+            headlineContent = { Text(stringResource(status)) },
+            supportingContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_account_hint)) },
+        )
+        item(
+            onClick = {
+                CustomTabsOAuthAuthorizationLauncher.launch(context, "https://chatgpt.com/settings/usage")
+            },
+            leadingContent = { CardGroupIcon(HugeIcons.DashboardSpeed02) },
+            headlineContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_manage_usage)) },
+            supportingContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_usage_hint)) },
+            trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+        )
+    }
 }
 
 // 订阅用量：每个窗口一条进度和重置时间

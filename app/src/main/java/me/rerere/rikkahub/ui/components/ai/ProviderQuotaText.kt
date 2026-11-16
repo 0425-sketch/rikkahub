@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.components.ai
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import me.rerere.ai.provider.ProviderManager
@@ -26,6 +28,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.DashboardSpeed02
 import me.rerere.hugeicons.stroke.MoneyBag02
 import me.rerere.rikkahub.R
+import me.rerere.oauth.CustomTabsOAuthAuthorizationLauncher
 import me.rerere.rikkahub.utils.SimpleCache
 import me.rerere.rikkahub.utils.toDp
 import org.koin.compose.koinInject
@@ -75,6 +78,24 @@ fun ProviderQuotaText(
     style: TextStyle = LocalTextStyle.current,
     color: Color = Color.Unspecified
 ) {
+    if (providerSetting is ProviderSetting.ChatGPT) {
+        val context = LocalContext.current
+        Text(
+            text = stringResource(
+                when {
+                    providerSetting.credential?.pendingRefresh != null -> R.string.setting_provider_page_chatgpt_recovery
+                    providerSetting.credential?.hasChatGPTPlanAccess == true -> R.string.setting_provider_page_chatgpt_plan_usage
+                    else -> R.string.setting_provider_page_chatgpt_authorization_required
+                }
+            ),
+            modifier = modifier.clickable {
+                CustomTabsOAuthAuthorizationLauncher.launch(context, "https://chatgpt.com/settings/usage")
+            },
+            style = style,
+            color = color,
+        )
+        return
+    }
     if (!providerSetting.supportsQuota) return
 
     val result = rememberProviderQuota(providerSetting)

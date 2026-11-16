@@ -8,14 +8,14 @@ import okio.Buffer
 
 class RequestLoggingInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        if (!Logging.isRequestLoggingEnabled()) {
+        if (!Logging.isRequestLoggingEnabled() || CredentialLogPolicy.omit(chain.request())) {
             return chain.proceed(chain.request())
         }
 
         val request = chain.request()
         val startTime = System.currentTimeMillis()
 
-        val requestHeaders = request.headers.toMap()
+        val requestHeaders = CredentialLogPolicy.headers(request.headers)
         val requestBody = request.body?.let { body ->
             val buffer = Buffer()
             body.writeTo(buffer)
@@ -43,7 +43,7 @@ class RequestLoggingInterceptor : Interceptor {
         }
 
         val durationMs = System.currentTimeMillis() - startTime
-        val responseHeaders = response.headers.toMap()
+        val responseHeaders = CredentialLogPolicy.headers(response.headers)
 
         Logging.logRequest(
             LogEntry.RequestLog(
@@ -62,13 +62,4 @@ class RequestLoggingInterceptor : Interceptor {
         return response
     }
 
-    private fun okhttp3.Headers.toMap(): Map<String, String> {
-        return names().associateWith { name ->
-            if (name.equals("Proxy-Authorization", ignoreCase = true)) {
-                "██"
-            } else {
-                get(name) ?: ""
-            }
-        }
-    }
 }

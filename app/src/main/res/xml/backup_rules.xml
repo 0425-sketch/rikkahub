@@ -6,6 +6,8 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
+  <!-- Keep the existing attachment-only policy. OAuth settings and the host ID
+       (in noBackupFilesDir) must never travel through Android backup. -->
   <include
     domain="file"
     path="upload/" />

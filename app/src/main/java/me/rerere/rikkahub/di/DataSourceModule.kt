@@ -19,6 +19,7 @@ import me.rerere.rikkahub.data.ai.ConversationMetaGenerator
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.MemoryConsolidator
 import me.rerere.rikkahub.data.ai.RequestLoggingInterceptor
+import me.rerere.rikkahub.data.ai.SafeHttpLoggingInterceptor
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.UsageRecorder
 import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
@@ -43,7 +44,6 @@ import me.rerere.rikkahub.service.memoryDreamKeepAlive
 import me.rerere.search.SearchService
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import org.koin.dsl.module
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -233,10 +233,7 @@ val dataSourceModule = module {
             }
             .addNetworkInterceptor(RequestLoggingInterceptor())
             .addInterceptor(AIRequestInterceptor())
-            .addInterceptor(HttpLoggingInterceptor().apply {
-                redactHeader("Proxy-Authorization")
-                level = HttpLoggingInterceptor.Level.HEADERS
-            })
+            .addInterceptor(SafeHttpLoggingInterceptor())
             .build()
         client.also { SearchService.init(it, get()) }
     }
@@ -252,7 +249,7 @@ val dataSourceModule = module {
     single {
         ProviderAccountManager(
             settingsStore = get(),
-            appScope = get(),
+            appScope = get<AppScope>(),
             client = get(),
         )
     }

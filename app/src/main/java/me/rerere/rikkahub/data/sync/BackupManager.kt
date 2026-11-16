@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.datastore.withoutChatGPTCredentials
 import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.AppDatabase
@@ -138,7 +139,12 @@ class BackupManager(
                     val settingsFile = File(staging, "settings.json")
                     if (settingsFile.exists()) {
                         val migrated = SettingsJsonMigrator.migrate(settingsFile.readText())
-                        val settings = json.decodeFromString<Settings>(migrated)
+                        val settings = try {
+                            json.decodeFromString<Settings>(migrated)
+                        } catch (_: IllegalArgumentException) {
+                            // Decoder errors can echo the archived token values from older backups.
+                            throw IllegalArgumentException("Backup settings could not be decoded")
+                        }
                         require(!settings.init) { "Backup contains uninitialized settings" }
                         // Persist the migrated value once, including generated IDs, for restart/retry consistency.
                         PendingRestore.writeDurably(settingsFile, json.encodeSettings(settings, json.launchCountOf(migrated)))
@@ -177,7 +183,8 @@ class BackupManager(
         private const val LAUNCH_COUNT_KEY = "launchCount"
 
         private fun Json.encodeSettings(settings: Settings, launchCount: Int): String {
-            val fields = encodeToJsonElement(settings).jsonObject + (LAUNCH_COUNT_KEY to JsonPrimitive(launchCount))
+            val fields = encodeToJsonElement(settings.withoutChatGPTCredentials()).jsonObject +
+                (LAUNCH_COUNT_KEY to JsonPrimitive(launchCount))
             return encodeToString(JsonObject(fields))
         }
 
@@ -196,7 +203,7 @@ class BackupManager(
             pendingRestore(context).apply { settingsJson ->
                 SettingsStore.restoreBeforeInitialization(
                     context = context,
-                    settings = json.decodeFromString<Settings>(settingsJson),
+                    settings = json.decodeFromString<Settings>(settingsJson).withoutChatGPTCredentials(),
                     launchCount = json.launchCountOf(settingsJson),
                 )
             }

@@ -65,7 +65,7 @@ private fun createSettingsDataStore(context: Context): DataStore<Preferences> {
     return PreferenceDataStoreFactory.create(
         corruptionHandler = ReplaceFileCorruptionHandler { exception ->
             // 文件已损坏无法解析, 先留一份原文件用于排查/抢救, 再重建为空
-            Log.e(TAG, "Settings datastore corrupted, resetting", exception)
+            Log.e(TAG, "Settings datastore corrupted, resetting (${exception.javaClass.simpleName})")
             runCatching {
                 file.copyTo(File(file.parentFile, "${file.name}.corrupt-${System.currentTimeMillis()}"))
             }.onFailure {
@@ -204,7 +204,7 @@ class SettingsStore internal constructor(
         .retryWhen { cause, attempt ->
             val shouldRetry = cause is IOException && cause !is CorruptionException && attempt < READ_MAX_RETRIES
             if (shouldRetry) {
-                Log.w(TAG, "Failed to read settings, retrying (${attempt + 1}/$READ_MAX_RETRIES)", cause)
+                Log.w(TAG, "Failed to read settings, retrying (${attempt + 1}/$READ_MAX_RETRIES): ${cause.javaClass.simpleName}")
                 delay((100L shl attempt.toInt()).milliseconds)
             }
             shouldRetry
@@ -234,7 +234,7 @@ class SettingsStore internal constructor(
                 throw e
             } catch (e: Throwable) {
                 // 读不出设置就不能带着占位值继续运行：界面上是一份默认设置，而任何修改都落不了盘
-                Log.e(TAG, "Failed to load settings", e)
+                Log.e(TAG, "Failed to load settings (${e.javaClass.simpleName})")
                 Runtime.getRuntime().halt(1)
                 throw e
             }
