@@ -376,3 +376,8 @@
 
 - 公开pin已提交推送7cb3b57c9c39bd674a836ffd355c9fe231db803f。主Actions43909609310（https://github.com/0425-sketch/rikkahub/actions/runs/43909609310）已启动，head SHA匹配；signing-state job133447603667成功识别pin，validate job133447603131正在执行全套验证，Python门禁已过。
 - root负责主流程和最终公开APK独立下载；delivery_review代理只读监看各job，结束后独立下载测试报告/公开恢复证据核对。主/备份实际restore仍未执行，不能提前宣称复用验证通过。bootstrap成功完整日志已保存/workspace/work/actions-43909232185/bootstrap-complete.log，未公开私密材料。
+
+### 本轮验证已过，两个独立构建实例已启动
+
+- Actions43909609310的validate133447603131与signing-state133447603667已success。主用构建job133451279681，runner_id1000000010；备份构建job133451279970，runner_id1000000011，均已in_progress且实例不同。
+- 两个job均checkout确切7cb3b57c9c39bd674a836ffd355c9fe231db803f，依赖/SDK准备后分别只读取指定的一个已持久Secret；签名恢复、实际APK构建及签名核验还未结束，发布尚未开始。独立测试artifact核验和最终APK下载仍待后续完成。
