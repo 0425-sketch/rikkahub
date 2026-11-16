@@ -334,3 +334,9 @@
 - 已实际内部打包检查：包名me.rerere.rikkahub.personal、versionCode199/versionName3.2.0-personal.1、minSdk26、仅arm64-v8a。内部元数据/workspace/work/personal-internal-apk-check/apk-verification.json；本地debug签名不匹配尚未pin的长期身份，未发布也不作为交付。
 - 尚未生成应用长期私钥或声称存储完成。新流程只会在确认Secrets可持久写入后生成一次；主用及恢复副本分别由独立runner读取实际构建，公共pin匹配才允许发布，之后实际公开下载校验。一次性setup Secret在交付验证成功后尽力删除；短期PAT本体不撤销、两个签名Secret不删除。
 - 本阶段代码准备分两个合理提交（产品/测试和安全交付），推送后实际运行Actions验证；若setup权限仍缺，APK jobs保持禁用，不能把测试成功当完成交付。真实SIWC服务端命中前后数据仍缺，第三方99.07%不是本项目结果；不宣称缓存已恢复。
+
+### 已提交产品阶段及交付工作流
+
+- 产品、缓存/请求/数据库/迁移测试、Room33 schema与本记录已提交cbf3552b（fix: preserve SIWC session affinity and truthful cache usage）。此前OAuth、工具、思考、搜索修复全部保留。
+- 紧接交付提交将包含长期签名bootstrap/restore/一次性权限清理、主副独立runner实际APK门禁、空pin禁止发布及34项Python门禁。docs/chatgpt-personal-signing.json的certificate_sha256目前为null，这是明确未配置状态，不是已保存固定签名。
+- 两个工作流随push触发：bootstrap若缺少安全写Secrets权限，必须在生成长期密钥前停止；主工作流独立运行全部验证。通过bootstrap后的公开证书回执需先固定提交，再以新workflow run读取新保存的Secrets，不能复用旧队列快照。仅操作custom-3.2.0，不修改master。

@@ -17,13 +17,24 @@ import urllib.request
 
 
 REPO = "0425-sketch/rikkahub"
-PACKAGE = "me.rerere.rikkahub.chatgpt.debug"
-VERSION_CODE = 198
-VERSION_NAME = "3.2.0-chatgpt.1"
-PREVIOUS_VERSION_CODE = 197
-# Public certificate from the previously delivered APK. Never make this a caller override:
-# publication must preserve the installed application's signing identity and its private data.
-EXPECTED_UPGRADE_CERTIFICATE_SHA256 = "369f5d9de364514a92337b02efc50ce5c35bfb53753c325286c0efcaabc5b497"
+PACKAGE = "me.rerere.rikkahub.personal"
+VERSION_CODE = 199
+VERSION_NAME = "3.2.0-personal.1"
+IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
+
+
+def signing_identity():
+    try:
+        identity = json.loads(IDENTITY_FILE.read_text())
+    except (OSError, ValueError):
+        delivery.fail("SIGNING_IDENTITY", "The public signing identity file is missing or invalid.")
+    if identity.get("schema") != 1 or identity.get("application_id") != PACKAGE:
+        delivery.fail("SIGNING_IDENTITY", "The pinned signing identity belongs to another application.")
+    certificate = identity.get("certificate_sha256")
+    if certificate is not None and not re.fullmatch(r"[a-f0-9]{64}", certificate):
+        delivery.fail("SIGNING_IDENTITY", "The pinned certificate digest is invalid.")
+    return identity
+
 
 # Reuse the reviewed HTTPS redirect restrictions and redacted CLI error handling.
 # Its old credential_env() is deliberately never called: only Actions GITHUB_TOKEN is used.
@@ -58,23 +69,52 @@ def inspect_apk(apk, build_tools):
         "min_sdk": 26,
         "architectures": ["arm64-v8a"],
         "certificate_sha256": certificates[0],
-        "expected_upgrade_certificate_sha256": EXPECTED_UPGRADE_CERTIFICATE_SHA256,
-        "upgrade_certificate_matches": certificates[0] == EXPECTED_UPGRADE_CERTIFICATE_SHA256,
-        "previous_version_code": PREVIOUS_VERSION_CODE,
+        "expected_certificate_sha256": signing_identity()["certificate_sha256"],
+        "fixed_certificate_matches": certificates[0] == signing_identity()["certificate_sha256"],
         "apk_sha256": delivery.sha256(apk),
         "apk_size": apk.stat().st_size,
     }
 
 
-def ensure_upgrade_compatible(metadata):
-    if metadata["certificate_sha256"] != EXPECTED_UPGRADE_CERTIFICATE_SHA256:
-        delivery.fail(
-            "UPGRADE_SIGNING",
-            "APK build succeeded, but its signing certificate does not match the installed version. "
-            "The original signing key is required; no Release or APK upload was created.",
-        )
-    if metadata["application_id"] != PACKAGE or metadata["version_code"] <= PREVIOUS_VERSION_CODE:
-        delivery.fail("UPGRADE_IDENTITY", "An update must keep the package name and increase versionCode.")
+def ensure_fixed_signer(metadata):
+    expected = signing_identity()["certificate_sha256"]
+    if expected is None:
+        delivery.fail("SIGNING_NOT_READY", "Durable signing has not been bootstrapped and pinned; publication is disabled.")
+    if metadata.get("certificate_sha256") != expected:
+        delivery.fail("SIGNING_MISMATCH", "APK certificate differs from the pinned personal signer; no Release was created.")
+    if metadata.get("application_id") != PACKAGE or metadata.get("version_code") != VERSION_CODE:
+        delivery.fail("SIGNING_IDENTITY", "The APK package or version differs from the personal release identity.")
+
+
+def verify_restoration_pair(primary, backup, receipts, source_sha, run_id, attempt):
+    for role, metadata in (("primary", primary), ("backup", backup)):
+        ensure_fixed_signer(metadata)
+        receipt = receipts.get(role, {})
+        expected = {
+            "schema": 1, "source": role, "application_id": PACKAGE,
+            "certificate_sha256": metadata["certificate_sha256"],
+            "source_commit": source_sha, "run_id": run_id, "run_attempt": attempt,
+            "private_key_verified": True,
+        }
+        if any(receipt.get(key) != value for key, value in expected.items()):
+            delivery.fail("RESTORATION", f"The {role} restoration receipt is missing, stale, or does not prove private-key recovery.")
+    for field in ("application_id", "version_code", "version_name", "certificate_sha256", "architectures", "min_sdk"):
+        if primary.get(field) != backup.get(field):
+            delivery.fail("RESTORATION", "The two clean builds do not share the same package, version and signing certificate.")
+
+
+def verify_clean_jobs(payload):
+    jobs = payload.get("jobs", [])
+    selected = []
+    for role in ("primary", "backup"):
+        matches = [job for job in jobs if job.get("name") == f"Restore and build ({role})"]
+        if len(matches) != 1 or matches[0].get("status") != "completed" or matches[0].get("conclusion") != "success":
+            delivery.fail("RESTORATION", "Both independent restoration build jobs must finish successfully before publishing.")
+        selected.append(matches[0])
+    if not all(job.get("id") and job.get("runner_id") for job in selected) or \
+            selected[0]["id"] == selected[1]["id"] or selected[0]["runner_id"] == selected[1]["runner_id"]:
+        delivery.fail("RESTORATION", "The primary and backup builds must run as distinct jobs on distinct runners.")
+    return [{key: job[key] for key in ("id", "name", "runner_id", "conclusion")} for job in selected]
 
 
 def download_apk(asset, tag, output, expected):
@@ -111,6 +151,9 @@ def main():
     parser.add_argument("--build-tools", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--recovery-apk", type=Path)
+    parser.add_argument("--primary-receipt", type=Path)
+    parser.add_argument("--backup-receipt", type=Path)
     args = parser.parse_args()
     metadata = inspect_apk(args.apk.resolve(), args.build_tools.resolve())
     source_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
@@ -118,13 +161,13 @@ def main():
         delivery.fail("SOURCE", "Invalid source commit.")
     metadata["source_commit"] = source_sha
     args.output.mkdir(parents=True, exist_ok=True)
-    # Keep a public diagnostic receipt even when publication is blocked by a missing original key.
+    # Keep public metadata even when the durable personal signer is not ready.
     (args.output / "apk-verification.json").write_text(json.dumps(metadata, indent=2) + "\n")
     if args.verify_only:
         print(json.dumps(metadata, indent=2))
         return
 
-    ensure_upgrade_compatible(metadata)
+    ensure_fixed_signer(metadata)
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != REPO:
         delivery.fail("AUTH", "Publication runs only in this repository's GitHub Actions.")
     if os.environ.get("GITHUB_REF") != "refs/heads/custom-3.2.0" or os.environ.get("GITHUB_SHA") != source_sha:
@@ -138,10 +181,32 @@ def main():
     env = dict(os.environ, GH_TOKEN=token, GH_HOST="github.com", GH_PROMPT_DISABLED="1", GH_PAGER="cat")
     env.pop("GH_DEBUG", None)
     env.pop("DEBUG", None)
-    tag = f"custom-3.2.0-chatgpt-{source_sha[:12]}-{run_id}-{attempt}"
+    if not all((args.recovery_apk, args.primary_receipt, args.backup_receipt)):
+        delivery.fail("RESTORATION", "The independently restored backup APK and both restoration receipts are required.")
+    try:
+        receipts = {
+            "primary": json.loads(args.primary_receipt.read_text()),
+            "backup": json.loads(args.backup_receipt.read_text()),
+        }
+    except (OSError, ValueError):
+        delivery.fail("RESTORATION", "Cannot read the public restoration receipts.")
+    backup_metadata = inspect_apk(args.recovery_apk.resolve(), args.build_tools.resolve())
+    verify_restoration_pair(metadata, backup_metadata, receipts, source_sha, run_id, attempt)
+    jobs = verify_clean_jobs(delivery.api_json(f"repos/{REPO}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100", env))
+    restoration = {
+        "schema": 1, "source_commit": source_sha, "application_id": PACKAGE,
+        "certificate_sha256": metadata["certificate_sha256"], "clean_builds": jobs,
+        "signing_storage": "GitHub Actions encrypted repository secrets",
+        "backup_scope": "separate logical recovery copy in the same repository vault",
+        "restoration_verified": True,
+    }
+    restoration_file = args.output / "signing-restoration-verification.json"
+    restoration_file.write_text(json.dumps(restoration, indent=2) + "\n")
+    tag = f"custom-3.2.0-personal-{source_sha[:12]}-{run_id}-{attempt}"
     metadata["tag"] = tag
     metadata["actions_url"] = f"https://github.com/{REPO}/actions/runs/{run_id}"
-    metadata["signing_persistence"] = "external-secret" if os.environ.get("CHATGPT_TEST_KEYSTORE") else "this-build-only"
+    metadata["signing_persistence"] = "durable-primary-and-backup-secrets"
+    metadata["two_clean_restorations_verified"] = True
     name = f"rikkahub-{VERSION_NAME}-{source_sha[:12]}-arm64.apk"
     apk = args.output / name
     shutil.copyfile(args.apk, apk)
@@ -151,28 +216,31 @@ def main():
     provenance.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     notes = args.output / "release-notes.txt"
     notes.write_text(
-        "RikkaHub 3.2.0 — ChatGPT 真机反馈修复测试版\n\n"
+        "RikkaHub 3.2.0 — 自用固定签名修复版\n\n"
         f"源码： https://github.com/{REPO}/commit/{source_sha}\n"
         f"Actions： {metadata['actions_url']}\n\n"
-        "ARM64，Android 8.0 及以上。已验证包名、原版证书和递增versionCode，可覆盖上一版ChatGPT自用测试包，保留其应用数据。\n"
-        "已保留通过真机验证的官方登录和正常聊天；本次修复仍需手机复测工具设置及搜索。\n"
-        "安装本更新不需要卸载旧版或重新配置提供商。\n\n"
+        "ARM64，Android 8.0 及以上。独立包名，与之前的ChatGPT测试版并存，保留旧应用及数据。\n"
+        "长期签名已保存为GitHub Actions加密主用与恢复副本，并在两个独立runner中恢复、构建和核验证书一致。\n"
+        "恢复副本位于同一仓库的Secret存储，不是跨平台灾备。后续此包名更新固定复用该证书。\n\n"
+        "迁移：旧版 设置→数据备份→本地，勾选聊天记录和文件导出ZIP；新版同页导入并重启，然后重新登录ChatGPT。\n"
+        "本次包含工具设置兼容、思考参数、Bing网络、跨包附件、SIWC稳定session_id请求头和缓存统计/脱敏诊断修复。\n"
+        "套餐原生生图仍不支持；未实现应用内真实套餐余额；缓存实际命中仍须查看手机服务端返回，未宣称已恢复。\n\n"
         f"APK SHA-256: `{metadata['apk_sha256']}`\n"
         f"证书 SHA-256: `{metadata['certificate_sha256']}`\n",
         encoding="utf-8",
     )
     delivery.gh([
         "release", "create", tag, "--repo", REPO, "--target", source_sha,
-        "--title", f"ChatGPT OAuth test {source_sha[:12]}", "--prerelease", "--latest=false",
+        "--title", f"RikkaHub Personal {VERSION_NAME} {source_sha[:12]}", "--prerelease", "--latest=false",
         "--notes-file", str(notes),
     ], env)
-    for path in (checksum, provenance, apk):
+    for path in (checksum, provenance, restoration_file, apk):
         delivery.gh(["release", "upload", tag, str(path), "--repo", REPO], env)
     release = delivery.api_json(f"repos/{REPO}/releases/tags/{tag}", env)
     if release.get("target_commitish") != source_sha or not release.get("prerelease") or release.get("draft"):
         delivery.fail("IDENTITY", "Published Release identity is not the requested test build.")
     assets = {asset["name"]: asset for asset in release["assets"]}
-    for path in (checksum, provenance):
+    for path in (checksum, provenance, restoration_file):
         delivery.verify_asset(assets[path.name], REPO, tag, path.name, delivery.sha256(path), path.stat().st_size)
     with tempfile.TemporaryDirectory(prefix="rikkahub-download-") as directory:
         downloaded = Path(directory) / apk.name
@@ -186,13 +254,13 @@ def main():
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
             summary.write(f"Verified public APK: [{apk.name}]({url})\n\n")
-            summary.write(f"Source `{source_sha}`; SHA-256 `{metadata['apk_sha256']}`; verified signing-compatible update.\n")
+            summary.write(f"Source `{source_sha}`; SHA-256 `{metadata['apk_sha256']}`; two clean signing restorations verified for the personal package.\n")
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (delivery.DeliveryError, subprocess.SubprocessError, KeyError) as error:
+    except (delivery.DeliveryError, subprocess.SubprocessError, KeyError, OSError, ValueError) as error:
         if isinstance(error, delivery.DeliveryError):
             print(str(error), file=sys.stderr)
         else:

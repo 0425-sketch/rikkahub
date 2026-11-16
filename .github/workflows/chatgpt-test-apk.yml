@@ -1,149 +1,275 @@
-name: Build and deliver ChatGPT OAuth test APK
-
-on:
+name: Build and deliver fixed-signing personal APK
+'on':
   push:
-    branches: [custom-3.2.0]
+    branches:
+    - custom-3.2.0
     paths:
-      - .github/workflows/chatgpt-test-apk.yml
-      - tools/publish-chatgpt-test.py
-      - docs/chatgpt-oauth-build-request.txt
-  workflow_dispatch:
-
+    - .github/workflows/chatgpt-test-apk.yml
+    - tools/publish-chatgpt-test.py
+    - docs/chatgpt-oauth-build-request.txt
+    - docs/chatgpt-personal-signing.json
+  workflow_dispatch: null
 permissions:
   contents: read
-
 concurrency:
-  group: rikkahub-chatgpt-test-release
+  group: rikkahub-personal-release
   cancel-in-progress: false
-
 jobs:
-  build-and-publish:
+  signing-state:
+    if: github.repository == '0425-sketch/rikkahub' && github.ref == 'refs/heads/custom-3.2.0'
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.identity.outputs.ready }}
+    steps:
+    - name: Check out the exact workflow commit
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+    - name: Read pinned public signing identity
+      id: identity
+      run: |-
+        python3 - <<'PYCODE'
+        import json, os, re
+        from pathlib import Path
+        value = json.loads(Path("docs/chatgpt-personal-signing.json").read_text())
+        certificate = value.get("certificate_sha256")
+        ready = value.get("application_id") == "me.rerere.rikkahub.personal" and isinstance(certificate, str) and re.fullmatch(r"[a-f0-9]{64}", certificate) is not None
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write(f"ready={str(ready).lower()}\n")
+        if not ready:
+            print("Fixed signing is not yet saved and pinned. Tests run; APK publication stays disabled.")
+        PYCODE
+  validate:
     if: github.repository == '0425-sketch/rikkahub' && github.ref == 'refs/heads/custom-3.2.0'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    steps:
+    - name: Check out the exact workflow commit
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+    - name: Verify source identity
+      env:
+        EXPECTED_SHA: ${{ github.sha }}
+      run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Install signing test dependencies in an isolated environment
+      run: |-
+        python3 -m venv "$RUNNER_TEMP/personal-signing-python"
+        "$RUNNER_TEMP/personal-signing-python/bin/pip" install --disable-pip-version-check PyNaCl==1.6.0
+        echo "$RUNNER_TEMP/personal-signing-python/bin" >> "$GITHUB_PATH"
+    - name: Check signing, publication and database guards
+      run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/tests -p 'test_*.py'
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: '11'
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: web-ui/pnpm-lock.yaml
+    - name: Install locked web dependencies
+      working-directory: web-ui
+      run: pnpm install --frozen-lockfile
+    - name: Reuse Gradle dependency cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches/modules-2
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-chatgpt-gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+        restore-keys: ${{ runner.os }}-chatgpt-gradle-
+    - name: Set up Android command-line tools
+      uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+      with:
+        cmdline-tools-version: '16111833'
+        packages: platform-tools
+        accept-android-sdk-licenses: true
+        log-accepted-android-sdk-licenses: false
+    - name: Prepare Android SDK packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        unset ANDROID_SDK_HOME
+        sdkmanager 'platforms;android-37.0' 'platforms;android-37.2' \
+          'build-tools;36.0.0' 'build-tools;37.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+    - name: Run protocol, cache, migration and application regression tests
+      run: |-
+        unset ANDROID_SDK_HOME
+        ./gradlew --no-daemon --no-configuration-cache --max-workers=2 \
+          '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+          -Pkotlin.compiler.execution.strategy=in-process \
+          :oauth:testDebugUnitTest :ai:testDebugUnitTest :search:testDebugUnitTest :app:testGithubDebugUnitTest
+    - name: Retain public test reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: personal-tests-${{ github.sha }}-${{ github.run_attempt }}
+        retention-days: 14
+        path: |-
+          oauth/build/test-results/testDebugUnitTest/*.xml
+          ai/build/test-results/testDebugUnitTest/*.xml
+          search/build/test-results/testDebugUnitTest/*.xml
+          app/build/test-results/testGithubDebugUnitTest/*.xml
+  signed-build:
+    name: Restore and build (${{ matrix.source }})
+    needs:
+    - validate
+    - signing-state
+    if: needs.signing-state.outputs.ready == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        source:
+        - primary
+        - backup
+    steps:
+    - name: Check out the exact workflow commit
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+    - name: Verify source identity
+      env:
+        EXPECTED_SHA: ${{ github.sha }}
+      run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: '11'
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: pnpm
+        cache-dependency-path: web-ui/pnpm-lock.yaml
+    - name: Install locked web dependencies
+      working-directory: web-ui
+      run: pnpm install --frozen-lockfile
+    - name: Reuse Gradle dependency cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches/modules-2
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-chatgpt-gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+        restore-keys: ${{ runner.os }}-chatgpt-gradle-
+    - name: Set up Android command-line tools
+      uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+      with:
+        cmdline-tools-version: '16111833'
+        packages: platform-tools
+        accept-android-sdk-licenses: true
+        log-accepted-android-sdk-licenses: false
+    - name: Prepare Android SDK packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        unset ANDROID_SDK_HOME
+        sdkmanager 'platforms;android-37.0' 'platforms;android-37.2' \
+          'build-tools;36.0.0' 'build-tools;37.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
+    - name: Restore only the selected durable signing copy
+      env:
+        RIKKAHUB_PERSONAL_SIGNING: ${{ matrix.source == 'primary' && secrets.RIKKAHUB_PERSONAL_SIGNING || '' }}
+        RIKKAHUB_PERSONAL_SIGNING_BACKUP: ${{ matrix.source == 'backup' && secrets.RIKKAHUB_PERSONAL_SIGNING_BACKUP || '' }}
+      run: python3 tools/chatgpt-signing.py restore --source "${{ matrix.source }}" --identity docs/chatgpt-personal-signing.json --output "$RUNNER_TEMP/personal-signing"
+    - name: Build using the restored fixed signer
+      run: |-
+        unset ANDROID_SDK_HOME
+        ./gradlew --no-daemon --no-configuration-cache --max-workers=2 \
+          '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+          -Pkotlin.compiler.execution.strategy=in-process \
+          :app:assembleGithubDebug
+    - name: Inspect actual ARM64 signature and identity
+      run: |-
+        python3 tools/publish-chatgpt-test.py --verify-only --apk app/build/outputs/apk/github/debug/app-github-arm64-v8a-debug.apk --build-tools "$ANDROID_HOME/build-tools/37.0.0" --output work/personal-${{ matrix.source }}
+        cp "$RUNNER_TEMP/personal-signing/signing-restoration-${{ matrix.source }}.json" work/personal-${{ matrix.source }}/
+        cp app/build/outputs/apk/github/debug/app-github-arm64-v8a-debug.apk work/personal-${{ matrix.source }}/candidate.apk
+    - name: Retain signed APK and public restoration evidence
+      uses: actions/upload-artifact@v4
+      with:
+        name: personal-build-${{ matrix.source }}-${{ github.sha }}-${{ github.run_attempt }}
+        retention-days: 14
+        path: work/personal-${{ matrix.source }}/
+    - name: Remove temporary private signing files
+      if: always()
+      run: |-
+        if [ -n "${CHATGPT_SIGNING_TEMP_DIRECTORY:-}" ]; then rm -rf "$CHATGPT_SIGNING_TEMP_DIRECTORY"; fi
+        rm -rf "$RUNNER_TEMP/personal-signing"
+        rm -f "$HOME/.android/debug.keystore"
+  publish:
+    name: Verify both restores and publish
+    needs:
+    - signed-build
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
+      actions: read
     steps:
-      - name: Check out the exact workflow commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Verify source identity
-        env:
-          EXPECTED_SHA: ${{ github.sha }}
-        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-
-      - name: Verify the upgrade publication guard
-        run: python3 -m unittest discover -s tools/tests -p 'test_chatgpt_release_signing.py'
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: '11'
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: pnpm
-          cache-dependency-path: web-ui/pnpm-lock.yaml
-
-      - name: Install locked web dependencies
-        working-directory: web-ui
-        run: pnpm install --frozen-lockfile
-
-      - name: Reuse Gradle dependency cache
-        uses: actions/cache@v4
-        with:
-          # Never cache Android's debug keystore, project config cache, or signing files.
-          path: |
-            ~/.gradle/caches/modules-2
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-chatgpt-gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-chatgpt-gradle-
-
-      - name: Set up Android command-line tools
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-        with:
-          # Same command-line tools 23.0 as the successfully verified local build.
-          cmdline-tools-version: '16111833'
-          packages: platform-tools
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
-
-      - name: Prepare Android SDK packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          unset ANDROID_SDK_HOME
-          sdkmanager 'platforms;android-37.0' 'platforms;android-37.2' \
-            'build-tools;36.0.0' 'build-tools;37.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
-
-      - name: Restore optional private signing configuration
-        env:
-          CHATGPT_TEST_KEYSTORE_B64: ${{ secrets.CHATGPT_TEST_KEYSTORE_B64 }}
-        run: |
-          python3 - <<'PY'
-          import base64, os
-          from pathlib import Path
-          encoded = os.environ.get("CHATGPT_TEST_KEYSTORE_B64")
-          if encoded:
-              path = Path(os.environ["RUNNER_TEMP"]) / "chatgpt-test.keystore"
-              path.touch(mode=0o600)
-              path.write_bytes(base64.b64decode(encoded, validate=True))
-              with open(os.environ["GITHUB_ENV"], "a") as env:
-                  env.write(f"CHATGPT_TEST_KEYSTORE={path}\n")
-              print("Using securely configured fixed signing key.")
-          else:
-              print("Original release signing key is unavailable. Tests and APK packaging can run, but the certificate gate will block incompatible update publication.")
-          PY
-
-      - name: Run protocol and regression tests and build current ARM64 APK
-        env:
-          CHATGPT_TEST_STORE_PASSWORD: ${{ secrets.CHATGPT_TEST_STORE_PASSWORD }}
-          CHATGPT_TEST_KEY_ALIAS: ${{ secrets.CHATGPT_TEST_KEY_ALIAS }}
-          CHATGPT_TEST_KEY_PASSWORD: ${{ secrets.CHATGPT_TEST_KEY_PASSWORD }}
-        run: |
-          unset ANDROID_SDK_HOME
-          ./gradlew --no-daemon --no-configuration-cache --max-workers=2 \
-            '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
-            -Pkotlin.compiler.execution.strategy=in-process \
-            :oauth:testDebugUnitTest :ai:testDebugUnitTest :search:testDebugUnitTest :app:testGithubDebugUnitTest \
-            :app:assembleGithubDebug
-
-      - name: Require original signing certificate, then publish and verify public download
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          python3 tools/publish-chatgpt-test.py \
-            --apk app/build/outputs/apk/github/debug/app-github-arm64-v8a-debug.apk \
-            --build-tools "$ANDROID_HOME/build-tools/37.0.0" \
-            --output work/chatgpt-delivery
-
-      - name: Retain test reports and public delivery evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: chatgpt-test-verification-${{ github.sha }}-${{ github.run_attempt }}
-          if-no-files-found: ignore
-          retention-days: 14
-          path: |
-            oauth/build/test-results/testDebugUnitTest/*.xml
-            ai/build/test-results/testDebugUnitTest/*.xml
-            search/build/test-results/testDebugUnitTest/*.xml
-            app/build/test-results/testGithubDebugUnitTest/*.xml
-            work/chatgpt-delivery/apk-verification.json
-            work/chatgpt-delivery/build-provenance.json
-            work/chatgpt-delivery/verified-delivery.json
-
-      - name: Remove temporary signing material
-        if: always()
-        run: rm -f "$RUNNER_TEMP/chatgpt-test.keystore" "$HOME/.android/debug.keystore"
+    - name: Check out the exact workflow commit
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+    - name: Verify source identity
+      env:
+        EXPECTED_SHA: ${{ github.sha }}
+      run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Set up APK inspection tools
+      uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+      with:
+        cmdline-tools-version: '16111833'
+        packages: build-tools;37.0.0
+        accept-android-sdk-licenses: true
+        log-accepted-android-sdk-licenses: false
+    - name: Download primary clean build
+      uses: actions/download-artifact@v4
+      with:
+        name: personal-build-primary-${{ github.sha }}-${{ github.run_attempt }}
+        path: work/primary
+    - name: Download backup clean build
+      uses: actions/download-artifact@v4
+      with:
+        name: personal-build-backup-${{ github.sha }}-${{ github.run_attempt }}
+        path: work/backup
+    - name: Verify two actual APKs, publish, then download and verify public APK
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: |-
+        python3 tools/publish-chatgpt-test.py \
+          --apk work/primary/candidate.apk --recovery-apk work/backup/candidate.apk \
+          --primary-receipt work/primary/signing-restoration-primary.json \
+          --backup-receipt work/backup/signing-restoration-backup.json \
+          --build-tools "$ANDROID_HOME/build-tools/37.0.0" --output work/personal-delivery
+    - name: Retire one-time setup authorization after verified delivery
+      continue-on-error: true
+      env:
+        RIKKAHUB_SIGNING_SETUP_TOKEN: ${{ secrets.RIKKAHUB_SIGNING_SETUP_TOKEN }}
+      run: python3 tools/chatgpt-signing.py retire-setup-token --identity docs/chatgpt-personal-signing.json --verification work/personal-delivery/verified-delivery.json
+    - name: Retain public delivery verification
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: personal-delivery-${{ github.sha }}-${{ github.run_attempt }}
+        retention-days: 14
+        path: work/personal-delivery/*.json
