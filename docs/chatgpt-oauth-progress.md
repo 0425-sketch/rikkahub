@@ -138,3 +138,37 @@
 - 并行任务：工具能力/请求/UI修复代理；搜索调用链与原始响应调查代理；官方额度/能力文档核实代理；签名来源及可升级交付调查代理。主代理整合、维护本记录、统一Gradle测试和提交推送。
 - 已确认初步证据：搜索UI对应客户端 `search_web`，SearchTools/BingSearchService/对应UI与原始 `e033a47` 无差异；尚未确认手机HTTP返回。图三错误文本存在于本地ChatGPT请求体校验，继续验证保存开关注入链。
 - 下一步：完成证据调查与局部修复/回归测试，明确签名可用性；任何关键阻碍立即记录，继续完成不依赖该阻碍的工作。
+
+## 第二轮调查：已确认问题与签名阻碍
+
+- 图三错误已定位为本地 `ChatGPTProvider.prepareChatGPTRequest` 对 `image_generation` 的校验；UI通用开关允许保存后，shared Responses构建器将其加入请求，发送前即失败。官方Preview页面本轮重新HTTP200读取，仍明确不支持该服务端工具；保留校验，修UI和已保存开关兼容，不伪装实现生图。
+- 原版 `e033a47` 的SearchTools、BingSearchService和SearchWebToolUI与第一轮交付无差异。截图对应客户端 `search_web`；不能仅凭模型对结果的描述认定解析错误。
+- 云端已取得Bing实际HTTP200 HTML：`新闻`解析11条；`天舟八号发射成功`解析10条但原始返回本身是“天”字相关内容，网页title/输入框仍回显完整query。尚未复现手机的空结果。发现Bing独用Jsoup直连绕过共享OkHttp/应用代理及取消机制，拟做有证据的最小修复。原始响应与解析证据 `/workspace/work/search-v2/`。
+- **覆盖升级存在明确签名阻碍**：重新验证上一Release APK证书为 `369f5d...b497`；当前本地APK为 `25eba60...5289`，不同。上次成功Actions日志证明固定签名secret为空、使用临时debug key、清理步骤成功删除该key；唯一artifact仅测试/公开验证报告，cache路径不含keystore。当前无恢复原私钥的安全来源，secrets API仍403；APK中的公开证书不能恢复私钥。证据 `/workspace/work/signing-v2-certificates.json`。
+- 用户本轮不授权改包/换签名/卸载，因此发布脚本将增加原证书强校验；错误签名不得创建Release或冒充覆盖升级包。继续完成全部独立代码、测试和候选构建，不能因签名问题丢弃工程成果；最后只说明无法由工程代码弥补的签名条件。
+- 最新文档/证据仍未包含手机真实HTTP headers或用户token；不索取登录凭据，不把模拟响应当真实套餐余额依据。
+
+## 第二轮阶段：官方额度结论与修复方案
+
+- 本轮重新读取13个官方页面及3份固定SHA官方源码，证据 `/workspace/work/siwc-v2-docs/quota-and-capabilities-review.md`、`retrieval.json`。重点来源：[Preview限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)、[模型与推理](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference)、[错误与恢复](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery)、[限流头](https://developers.openai.com/api/docs/guides/rate-limits)。
+- 已查 `GET https://api.openai.com/v1/models`（模型目录）、`POST .../v1/responses` 的usage/events（单次输入/输出token）、`x-ratelimit-*`（RPM/TPM）、token reference（认证有效期）；均没有建立真实套餐剩余数据源。Admin `GET /v1/organization/usage/completions` 需不同的管理员API凭据且统计消费，不是SIWC套餐余额。
+- 对照原版 `https://chatgpt.com/backend-api/wham/usage` 及Codex源码 `x-codex-*` 限额头：旧实现存在，但当前新路由文档/实际已知响应未证明其适用于新scope和套餐/应用统计口径；未擅自用新token调用旧后台。官方限额错误还明确不能据此推断整个套餐耗尽或重置时间。
+- **本轮尚未实现应用内实时剩余额度**：缺的是适用于当前授权且能识别限额范围/周期/reset的接口或真实响应字段。增加明确的不可用状态说明，保留官方 `https://chatgpt.com/settings/usage`，不把网页入口描述成实时额度；没有伪造百分比/缓存/刷新按钮。
+- 工具能力修复使用共享helper识别有效Provider（包括model.providerOverwrite），仅ChatGPT旧不兼容开关被过滤/迁移；持久化一次提示，不动其他Provider设置，不误伤图像输入或客户端函数。请求自定义明确指定非法工具仍精确拒绝。
+- 覆盖版本准备为同包名 versionCode198 / `3.2.0-chatgpt.1`；发布前必须匹配旧证书。4项发布门禁测试通过，错签名即使伪造显示字段也不能创建Release。当前这部分未提交；仍需统一测试、构建并实际验证签名条件。
+
+## 第二轮追加范围：思考档位与最终请求参数
+
+- 用户追加要求已合并同一轮实现/测试/交付：逐项对照原始3.2.0的ChatGPTProvider、ResponseAPI、ReasoningLevel与参数合并逻辑，检查模型/助手/会话/持久化→TextGenerationParams→能力配置→自定义Body→最终HTTP JSON完整链路。
+- 逐项验证AUTO（默认省略）、OFF、高/超高和所有界面档位；依据实际模型能力，禁止静默降档或统一high。最终交付需提供界面→请求值对照，区分客户端已验证与真实账号服务端未验证。
+- 强制检查最终合并后的store:false、stream:true及不支持字段，同时审计summary、encrypted_content、instructions/developer、历史/工具结果、prompt_cache_key；自定义冲突需明确处理，隔离其他Provider。
+- 覆盖保存重载、模型切换、多轮/工具循环、标题、压缩、连接测试的实际模型/档位；采用请求构造/模拟HTTP捕获，不依据回答风格或0秒显示。
+- 当前已提交推送仅阶段记录 `583afbb9`；本轮代码未提交。初版工具兼容AI测试运行 `:ai:testDebugUnitTest` 已成功（22秒，日志 `/workspace/work/chatgpt-v2-ai-tests.log`），不代表新增思考审计已测试。
+- 独立审阅发现并分配修复：会话builtInSearch可重新加入目录不支持的Search，以及tool_choice.allowed_tools嵌套非法托管工具未校验。两个新代理分别负责应用配置/辅助请求链和AI最终协议，不改OAuth；主代理继续统一测试、发布门禁与进度。
+
+## 第二轮阶段：搜索修复已单独验证
+
+- Bing保持原搜索服务和结果选择器，改为共享OkHttp，遵循应用代理/TLS/超时/取消；URL用query参数编码完整中文与特殊字符。错误明确区分HTTP状态、验证页、明确空结果和无法识别页面，不再把所有情况统一说成无结果。
+- 已执行 `:search:testDebugUnitTest`：22/22通过（含6项新增Bing用例），日志 `/workspace/work/chatgpt-v2-search-tests.log`。应用层完整runAgent/搜索/两轮Responses集成用例已落盘，但尚未执行；不能混称全部搜索回传已测。
+- 搜索独立阶段随本次提交推送；AI/App新思考与UI迁移仍为未提交且待统一测试。详细调查原始证据 `/workspace/work/search-v2/investigation.md`，不把云端结果当作手机网络复现。
+- 已确认新思考问题：旧OFF在catalog不支持none时静默省略effort。正在实现准确能力约束及已保存无效档位提示；主聊天默认AUTO，辅助请求未明确选档时仅ChatGPT采用AUTO，其他Provider默认行为保持。
