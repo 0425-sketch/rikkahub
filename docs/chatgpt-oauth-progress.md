@@ -79,5 +79,12 @@
 
 - 最终本地结果：OAuth **10/10**、AI **317/317**、应用 **549/549**，无失败/错误/跳过；含新版Auth 8项、Manager 11项、Verifier 13项。`git diff --check`通过。
 - 构建源码提交：`1d6332e6191f9693fb3bcf064027a6a332fd01d2`。
-- Actions：`https://github.com/0425-sketch/rikkahub/actions/runs/43873871407`，已确认 `in_progress`，head SHA匹配。交付代理监看并保存长日志，主代理负责最终独立下载校验。
+- Actions：`https://github.com/0425-sketch/rikkahub/actions/runs/43873871407`，head SHA匹配；已结束失败，具体阶段见下条。交付代理监看并保存长日志，主代理负责最终独立下载校验。
 - 目前尚无新版Release下载验证结论。下一步核对Actions每阶段结果，必要时修复并用构建请求文件重新触发；成功后记录独立tag、Release、APK大小/SHA-256/证书/包名/版本/ABI。
+
+## 阶段更新：首次Actions SDK准备失败
+
+- Run `43873871407` / job `133321738399` 已完成，checkout、确切SHA检查、JDK21、pnpm11、Node22、锁定前端依赖安装均成功。
+- `Prepare Android SDK packages` 实际错误：`sdkmanager: command not found`（exit127），不是平台版本缺失。构建/发布步骤未执行；完整日志 `/workspace/work/actions-43873871407/job-133321738399-complete.log`。
+- 已修workflow：先用固定提交的 `android-actions/setup-android` 设置命令行工具与PATH，使用现有本地验证过的tools23.0/build16111833，再安装所需包；移除重复license管道。YAML解析与diff检查通过。此修复不改已测试的应用代码。
+- 不重复运行原样失败流程。下一步提交必要workflow修复并自动触发新运行，记录确切新源码SHA。

@@ -67,14 +67,20 @@ jobs:
           key: ${{ runner.os }}-chatgpt-gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-chatgpt-gradle-
 
+      - name: Set up Android command-line tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          # Same command-line tools 23.0 as the successfully verified local build.
+          cmdline-tools-version: '16111833'
+          packages: platform-tools
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
       - name: Prepare Android SDK packages
         shell: bash
         run: |
           set -euo pipefail
           unset ANDROID_SDK_HOME
-          set +o pipefail
-          yes | sdkmanager --licenses > "$RUNNER_TEMP/android-licenses.log"
-          set -o pipefail
           sdkmanager 'platforms;android-37.0' 'platforms;android-37.2' \
             'build-tools;36.0.0' 'build-tools;37.0.0' 'ndk;28.2.13676358' 'cmake;3.22.1'
 
