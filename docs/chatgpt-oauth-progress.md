@@ -451,3 +451,8 @@
 
 - 最终构建源码37fba983cae83bf2c42dc77695c2b796edaabbd0已提交推送custom-3.2.0，保留前一显示修复338b99f2；工作区代码干净。新Actions43923584665（https://github.com/0425-sketch/rikkahub/actions/runs/43923584665）已in_progress，读取确切37fba983。
 - 独立审阅/证据目录改为/workspace/work/actions-43923584665/delivery-review，预期990+34通过后再双恢复构建。root最终下载路径将为/workspace/work/release-43923584665；仍待新APK发布及实际下载，不能用旧personal.1或失败run的产物交付。后续只改进度记录的commit不改变构建source。
+
+### 新Actions回归已通过，双固定签名构建启动
+
+- Actions43923584665 source37fba983的validate133496985638与signing-state133496985370均success；本轮测试artifact由独立审阅代理下载核对990份testcase实际结果，详细计数随后补充。
+- 主用构建job133501686982/runner1000000017，备份job133501687108/runner1000000018，均已启动且实例不同。依赖准备后分别读取各自持久Secret，固定证书仍882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd；尚待实际APK及发布核验，不提前称交付完成。
