@@ -358,3 +358,9 @@
 - 网络失败自动重试仍沿用原有关闭策略；后续发起同一聊天请求继续从同一持久会话ID派生session_id。401刷新已用真实MockWebServer捕获两次最终HTTP验证头与body稳定。
 - 唯一需用户的配置仍为 `RIKKAHUB_SIGNING_SETUP_TOKEN`，限仓库0425-sketch/rikkahub、Secrets read/write、建议1天有效期，值只保存在GitHub Actions Secret。准确入口https://github.com/0425-sketch/rikkahub/settings/secrets/actions/new；可预填创建页https://github.com/settings/personal-access-tokens/new?name=RikkaHub-signing-setup&target_name=0425-sketch&expires_in=1&secrets=write，仍需选Only select repositories→rikkahub。当前连接403与实际bootstrap SETUP_PERMISSION是需此配置的依据，不是再次请求改安装方式。
 - 下一轮恢复必须先读本文件、核对Git远端、确认该配置已完成，再按上一节具体动作接续。不要重跑旧签名调查，不丢弃已通过的缓存/工具/思考/搜索/迁移修复，不将暂停于必要权限配置视为完成交付。
+
+## 2026-11-17（Asia/Singapore）：用户已设置安全配置，恢复交付
+
+- 用户已明确回复“已设置”。恢复时已先读本进度、核对本地与远端custom-3.2.0同为01cebc168d5b93b4c9fff4ea167803b040acbe41且工作区干净；上次984+34项云端验证及bootstrap权限失败记录均与实际Actions一致。
+- 新增bootstrap请求文件触发全新run，读取用户配置的新Secret快照。产品源码与已通过验证的cbf3552b/eebc76d1保持一致；未重新调查旧签名、未向用户索取令牌值。
+- 下一步：核对bootstrap公开回执与持久化成功→固定公开证书→新run分别恢复主/备份构建→Release及APK实际下载验证。当前仍不能声称长期签名已保存或新版APK已交付。

@@ -1,0 +1,3 @@
+2026-11-17 Asia/Singapore: user confirmed RIKKAHUB_SIGNING_SETUP_TOKEN is configured.
+Persist the personal signing identity and recovery copy using the guarded bootstrap workflow.
+Retain only public signing identity and persistence receipts. Do not regenerate an existing signer.
