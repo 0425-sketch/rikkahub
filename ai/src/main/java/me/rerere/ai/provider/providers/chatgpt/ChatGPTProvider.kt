@@ -2,6 +2,7 @@ package me.rerere.ai.provider.providers.chatgpt
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -19,6 +20,7 @@ import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.ChatGPTModelCapabilities
 import me.rerere.ai.provider.Modality
+import me.rerere.ai.provider.OAuthCredential
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.Provider
@@ -36,6 +38,7 @@ import me.rerere.ai.ui.StreamChunkHandler
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.util.json
 import me.rerere.ai.util.mergeCustomBody
+import me.rerere.ai.util.mergeCustomHeaders
 import me.rerere.common.http.await
 import me.rerere.common.http.jsonPrimitiveOrNull
 import me.rerere.common.http.stringOrNull
@@ -100,15 +103,55 @@ class ChatGPTProvider(
         providerSetting: ProviderSetting.ChatGPT,
         messages: List<UIMessage>,
         params: TextGenerationParams,
-    ): Flow<StreamChunk> = responseAPI.streamText(
-        endpoint = ResponsesEndpoint(
-            url = "$CHATGPT_BASE_URL/responses",
-            capabilities = chatGPTCapabilities(params.model),
-            configureRequest = { configureAuth(providerSetting, params.customHeaders) },
-        ),
-        messages = messages,
-        params = params,
-    )
+    ): Flow<StreamChunk> = flow {
+        var account: String? = null
+        var diagnosticRequest: Long? = null
+        try {
+            responseAPI.streamText(
+                endpoint = ResponsesEndpoint(
+                    url = "$CHATGPT_BASE_URL/responses",
+                    capabilities = chatGPTCapabilities(params.model),
+                    configureRequest = {
+                        configureAuth(
+                            providerSetting, params.customHeaders,
+                            sessionId = params.sessionId, manageSessionAffinity = true,
+                        ) { credential ->
+                            account = ChatGPTCacheDiagnostics.accountKey(providerSetting, credential)
+                        }
+                    },
+                    observeRequest = { request, body ->
+                        account?.let { identity ->
+                            val previous = diagnosticRequest
+                            previous?.let(ChatGPTCacheDiagnostics::ended)
+                            diagnosticRequest = ChatGPTCacheDiagnostics.begin(
+                                identity, body, params.sessionId,
+                                finalSessionIdHeader = request.header("session_id"), previousAttempt = previous,
+                            )
+                        }
+                    },
+                    observeCompletedResponse = { response ->
+                        diagnosticRequest?.let { ChatGPTCacheDiagnostics.serverDiagnostics(it, response) }
+                    },
+                ),
+                messages = messages,
+                params = params,
+            ).collect { chunk ->
+                // Usage is the actual terminal SSE snapshot; absence stays unknown.
+                runCatching {
+                    diagnosticRequest?.let { request ->
+                        when (chunk) {
+                            is StreamChunk.Usage -> ChatGPTCacheDiagnostics.usage(request, chunk.usage)
+                            is StreamChunk.Finish -> ChatGPTCacheDiagnostics.completed(request)
+                            else -> Unit
+                        }
+                    }
+                }
+                emit(chunk)
+            }
+        } finally {
+            runCatching { diagnosticRequest?.let(ChatGPTCacheDiagnostics::ended) }
+        }
+    }
 
     override suspend fun generateText(
         providerSetting: ProviderSetting.ChatGPT,
@@ -136,11 +179,20 @@ class ChatGPTProvider(
     private suspend fun Request.Builder.configureAuth(
         setting: ProviderSetting.ChatGPT,
         customHeaders: List<CustomHeader> = emptyList(),
-    ) = configureAccountAuth(credentials, setting, customHeaders) { credential ->
-        check(credential.isOfficialChatGPT) { "此 ChatGPT 连接需要通过官方流程重新登录授权。" }
-        check(credential.hasChatGPTPlanAccess) { "已登录，但未授予 ChatGPT 套餐调用权限。请进入提供商设置重新授权。" }
-        // Persisted/custom headers from the former integration must not accompany the public route.
-        listOf("ChatGPT-Account-ID", "originator", "session-id", "client-version").forEach(::removeHeader)
+        sessionId: String? = null,
+        manageSessionAffinity: Boolean = false,
+        observeCredential: (OAuthCredential) -> Unit = {},
+    ) {
+        // Keep the original configured values separate from generated headers across a 401 retry.
+        val configuredSessionHeaders = setting.mergeCustomHeaders(customHeaders).values("session_id")
+        configureAccountAuth(credentials, setting, customHeaders) { credential ->
+            check(credential.isOfficialChatGPT) { "此 ChatGPT 连接需要通过官方流程重新登录授权。" }
+            check(credential.hasChatGPTPlanAccess) { "已登录，但未授予 ChatGPT 套餐调用权限。请进入提供商设置重新授权。" }
+            if (manageSessionAffinity) configureChatGPTSessionAffinity(credential, sessionId, configuredSessionHeaders)
+            runCatching { observeCredential(credential) }
+            // Persisted/custom headers from the former integration must not accompany the public route.
+            listOf("ChatGPT-Account-ID", "originator", "session-id", "client-version").forEach(::removeHeader)
+        }
     }
 }
 
@@ -193,6 +245,7 @@ internal fun prepareChatGPTRequest(body: JsonObject): JsonObject {
     val tools = body["tools"] as? JsonArray
     validateChatGPTTools(tools)
     validateChatGPTToolChoice(body["tool_choice"])
+    validateChatGPTPromptCacheOptions(body)
     val include = body["include"]
     require(include == null || include is JsonArray) { "ChatGPT 自定义 include 必须是数组，且需保留 reasoning.encrypted_content 以延续多轮推理。" }
     val includables = (include as? JsonArray).orEmpty()
@@ -200,7 +253,9 @@ internal fun prepareChatGPTRequest(body: JsonObject): JsonObject {
     val unsupportedIncludes = includables.map { (it as JsonPrimitive).content }
         .filter { it.startsWith("file_search") || it.startsWith("computer_call") || it.startsWith("code_interpreter") }
     require(unsupportedIncludes.isEmpty()) { "ChatGPT 套餐不支持 include 中的服务端工具：${unsupportedIncludes.joinToString()}。" }
-    return JsonObject(body.filterKeys { it !in unsupportedFields } + mapOf(
+    val compatible = body.filterKeys { it !in unsupportedFields }.toMutableMap()
+    tools?.let { compatible["tools"] = stableChatGPTToolDefinitions(it) }
+    return JsonObject(compatible + mapOf(
         "store" to JsonPrimitive(false),
         "stream" to JsonPrimitive(true),
         // A custom include list may request additional output, but cannot erase stateless history.

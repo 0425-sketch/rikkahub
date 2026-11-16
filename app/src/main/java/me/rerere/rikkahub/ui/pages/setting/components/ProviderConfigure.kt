@@ -38,11 +38,14 @@ import me.rerere.ai.provider.ClaudePromptCacheTtl
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.ProviderQuota
 import me.rerere.ai.provider.supportsQuota
+import me.rerere.ai.provider.providers.chatgpt.ChatGPTCacheDiagnostics
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.account.AccountLoginStatus
 import me.rerere.oauth.CustomTabsOAuthAuthorizationLauncher
 import me.rerere.rikkahub.data.ai.account.ProviderAccountManager
 import me.rerere.rikkahub.data.datastore.DEFAULT_PROVIDERS
+import me.rerere.rikkahub.data.export.ExportData
+import me.rerere.rikkahub.data.export.ExportSerializer
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Cancel01
@@ -63,6 +66,7 @@ import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceButtons
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.hooks.rememberExporter
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.serialization.json.Json
@@ -475,6 +479,7 @@ private fun ProviderConfigureAccount(
 private fun ChatGPTPlanStatus(provider: ProviderSetting.ChatGPT) {
     val context = LocalContext.current
     val credential = provider.credential
+    val cacheDiagnosticExporter = rememberExporter(provider, ChatGPTCacheDiagnosticExportSerializer)
     var showWelcome by remember(provider.id) { mutableStateOf(false) }
     LaunchedEffect(credential?.clientId, credential?.hasChatGPTPlanAccess) {
         if (credential?.hasChatGPTPlanAccess == true) {
@@ -523,7 +528,21 @@ private fun ChatGPTPlanStatus(provider: ProviderSetting.ChatGPT) {
             supportingContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_usage_hint)) },
             trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
         )
+        item(
+            onClick = { cacheDiagnosticExporter.exportToFile() },
+            leadingContent = { CardGroupIcon(HugeIcons.DashboardSpeed02) },
+            headlineContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_cache_diagnostics_export)) },
+            supportingContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_cache_diagnostics_desc)) },
+            trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+        )
     }
+}
+
+private object ChatGPTCacheDiagnosticExportSerializer : ExportSerializer<ProviderSetting.ChatGPT> {
+    override val type = "chatgpt-cache-diagnostics"
+    override fun export(data: ProviderSetting.ChatGPT) = ExportData(type = type, data = ChatGPTCacheDiagnostics.export(data))
+    override fun import(context: android.content.Context, uri: android.net.Uri): Result<ProviderSetting.ChatGPT> =
+        Result.failure(UnsupportedOperationException("Diagnostics are export-only"))
 }
 
 // 订阅用量：每个窗口一条进度和重置时间

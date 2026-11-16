@@ -6,10 +6,12 @@ import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.repository.ConversationRepository
@@ -73,6 +75,7 @@ class ChatToolFactory(
                     createSkillTools(
                         enabledSkills = assistant.enabledSkills,
                         allSkills = skillManager.listSkills(),
+                        stableOrdering = model.findProvider(settings.providers) is ProviderSetting.ChatGPT,
                     )
                 )
             }

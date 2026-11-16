@@ -17,8 +17,12 @@ private const val MAX_SKILL_DESCRIPTION_LENGTH = 1024
 fun createSkillTools(
     enabledSkills: Set<String>,
     allSkills: List<SkillMetadata>,
+    stableOrdering: Boolean = false,
 ): List<Tool> {
-    val available = allSkills.filter { it.name in enabledSkills }
+    val available = allSkills.filter { it.name in enabledSkills }.let {
+        // Filesystem enumeration order can change after restore or a skill refresh.
+        if (stableOrdering) it.sortedBy { skill -> skill.name } else it
+    }
     if (available.isEmpty()) return emptyList()
 
     return listOf(

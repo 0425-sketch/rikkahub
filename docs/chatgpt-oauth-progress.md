@@ -1,6 +1,8 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-**当前任务：第二轮修复源码、936项测试和本地/Actions构建完成；覆盖安装交付仍被原签名私钥缺失阻断，未创建新Release，未交付新APK下载链接。** 用户已真机确认第一轮官方OAuth和普通聊天可用，相关成果已保留。最新产品源码 `b9f795224c260bcb0b3de7cd77c115eb188cb2f6`；全部代码已推送 `custom-3.2.0`，末尾记录最终Actions/证书/未完成事项。恢复时先读取本文件末尾并核对Git、Actions与Release，不能把构建成功当作交付完成。
+**当前任务：用户已授权新长期签名与独立包名并存交付，并追加SIWC缓存统计/请求前缀审计。停止旧签名调查。** 保留全部已验证修复；发布前必须安全持久化签名及备份、在两个干净构建实例恢复复用并验证同包同证书，再上传Release并实际下载APK。若权限阻碍，完成所有独立工作后仅提出一个必要安全配置动作。最新要求与状态见末尾；恢复时先核对Git和实际Actions。
+
+**当前缓存专项重点：** 读取官方 DevKit issue 9 与 OpenClaw issue 197532 及最新评论/关联PR，核对下划线 HTTP 头 `session_id`、旧连字符头 `session-id`、JSON `prompt_cache_key` 的实际请求与服务端回值；不得混用或将第三方命中改善当作本应用真实验证。
 
 ## 目标、范围与验收
 
@@ -286,3 +288,49 @@
 - 官方GitHub文档 <https://docs.github.com/en/actions/concepts/runners/github-hosted-runners> 与安全说明确认托管job使用新VM/临时隔离环境；当前可用API未发现恢复该已结束runner文件的功能。没有将“未找到恢复API”夸大为GitHub内部绝不存在恢复可能；任何未配置的外部私人备份或平台内部运维存储均不在当前可访问范围内，也没有证据表明存在。
 - 本次实际完成文件系统候选扫描、环境安全绑定、远端artifact全清单及原artifact下载、cache全清单与打包时序、repo environments、runner类型、原APK签名与AGP随机生成实现、官方签名/轮换恢复规则的交叉审计。独立摘要 `/workspace/work/signing-recovery-audit/remote-summary.md`。
 - 结果：当前可用资源中仍没有原私钥或合法的同签名恢复路径。不是等待用户确认或工程排错；没有需要用户继续操作的已知步骤。保留同包同签名条件和已通过936项测试的修复成果，交付仍未完成，不能承诺可恢复或用新key冒充同签名。
+
+
+## 补救交付与缓存任务：新授权范围
+
+- 用户明确停止旧签名调查，授权生成一次新长期自用签名，采用独立包名与旧版并存；保留旧安装和数据。此前禁止更换安装方式的约束由此新指令替代。
+- 暂定新包名me.rerere.rikkahub.personal，versionCode199/versionName3.2.0-personal.1。保留b9f79522的全部工具、思考、搜索、OAuth成果。
+- 硬验收：私钥及必要密码必须安全持久化并备份，不能只在工作区/runner/cache。两个干净构建实例分别从保存的主用/恢复副本构建，实际验证包名与证书一致，之后才发布并下载校验。普通artifact不得含私钥/keystore/可还原Base64或密码。
+- 当前GitHub连接的Secrets public-key接口本轮实际仍403；不使用旧已撤销PAT，不向聊天索取密钥。正在准备只需一个短期、限此仓库Secrets读写的安全bootstrap配置项；正式生成密钥必须在可安全写入持久Secret后，正常build不允许自动临时key回退。
+- 主用与备份计划为两份独立GitHub Actions加密Secret，是同一vault下逻辑恢复副本，不宣称异地灾备。bootstrap与读取新secret的构建必须为不同workflow run，避免排队时secret快照仍旧；只用custom-3.2.0 push触发，保持master不变。
+- 新增缓存任务：usage原始字段→SSE→TokenUsage→工具聚合→消息/统计存盘→UI逐层核查missing与0，缓存写入字段、比例分母和重复累计；核对最终prompt_cache_key/options/explicit断点及前缀非预期变化。云端无手机真实授权，不以API Key或mock代替SIWC真人实测。
+- 并行分工：usage链与App统计/DB；最终请求/稳定前缀/官方文档及最小HMAC脱敏诊断；备份跨包迁移与准确UI步骤；安全签名bootstrap/restore脚本；主代理整合workflow/发布门禁/包名/统一测试/提交。主进度只维护本文件。
+
+## 补救阶段：缓存与迁移实现，首次统一测试通过
+
+- 缓存原始正数cached_tokens原本可解析，尚无证据说手机正命中全部被丢弃。确证缺陷为missing→0、明确零快照无法覆盖、未知样本混入比例分母、cache_write未保存、工具末步缺usage借用上一步。已修为presence/unknown/partial，DB33保留历史（旧零未知），比例只采用同一已知样本的input/cached并显示覆盖范围。
+- 原sessionId已稳定来自持久conversation.id，prompt_cache_key未漏传，无默认explicit。仅ChatGPT稳定工具/schema对象/技能清单顺序，保持语义与其他Provider行为。高级explicit无有效content断点针对提示；不自动注入未经SIWC确认的新options/diagnostics，不改storefalse/streamtrue或添加retention。
+- 新增当前进程/当前账号最近40个HTTP请求的本地脱敏缓存诊断，HMAC摘要/长度/差异位置与终态实际usage字段presence，手动导出，无聊天正文/凭据/自动上传。合成测试示例input4096/cached2048/write1024是fixture，不是真人前后测量，不能声称缓存已恢复。
+- 新包采用me.rerere.rikkahub.personal，versionCode199/versionName3.2.0-personal.1，应用名“RikkaHub 自用”。备份跨包导入会重映射备份内实际存在的附件路径，保留旧版数据；OAuth整个credential/pending不迁移，新包重新登录，非密钥registration可按官方跨host规则复用。
+- 首次本地统一Gradle完成：OAuth10/10、AI356/356、搜索22/22、App585/585，总973项全部通过（1分26秒），日志 `/workspace/work/personal-cache-tests-1.log`。Room33.json已生成，需随代码提交。
+- 签名/发布Python首次31项中30过、1失败，真实短期fixture发现PKCS12 keytool的keypass校验不可靠，正在改为JDK直接getKey签名验签挑战；这不是应用长期签名，未生成/写入真正长期key。签名脚本与workflow仍待最终复测/独立审阅。
+- 此阶段改动仍未提交；接下来修实际失败、完成安全审阅→提交推送已验证源码与流程→Actions运行不依赖签名的检查。持久化权限仍缺，最后只需安全配置一个限仓库Secrets读写的短期bootstrap token；不得通过聊天发送。
+
+## 缓存专项追加：实际会话请求头与服务端缓存键
+
+- 已恢复读取本进度及实际Git：分支custom-3.2.0，HEAD 68c06a73；前述缓存、迁移与签名流程仍为未提交工作区成果，保留不覆盖。用户新增两个具体Issue作为调查线索：https://github.com/openai/sign-in-with-chatgpt-devkit/issues/9 和 https://github.com/openclaw/openclaw/issues/197532 。
+- 请求代理核对Issue/最新评论/关联PR与官方文档，沿最终header合并、授权及HTTP请求实施必要SIWC-only修复；诊断代理扩展实际发送session_id及服务端返回prompt_cache_key的presence/HMAC/同会话变化，未返回不可用请求值补造。
+- 既有诊断复审已补重复terminal一次保护、max档位记录和独立会话摘要分组；即使高级Body改prompt_cache_key也能检测变化。新增3项测试待统一运行。
+- 签名脚本实际JDK私钥签名验签修复后，全部Python31项通过（含实际短期fixture、SQLite迁移与双恢复发布门禁），日志/workspace/work/personal-python-tests-2.log。未生成应用长期私钥，持久存储权限仍缺；官方签名验收不能以此fixture代替。
+- 下一步：完成session_id最终HTTP与响应键测试→重跑受影响AI/App测试和ARM64内部打包→提交推送→实际Actions验证。没有真实手机授权原始响应，仍不能判定近零是服务端真实miss或宣称已恢复。
+
+### 会话头专项已确认事实
+
+- 当前本项目SIWC代码确实未生成下划线HTTP头session_id；JSON prompt_cache_key已使用持久conversation.id，旧session-id只被主动移除。因此存在可修复客户端缺口，但不能只据缺口断言手机近零根因。
+- 已取得DevKit#9正文及全部3条评论、OpenClaw#197532完整timeline。直接关联PR#197588（head b6f3c238）仍open未合并，其stand-in验证header抵达，并未补真实cache复测；已合并PR#141107属于proxy不同范围，不能混同。OpenClaw第三方对照只加稳定session_id由0%至99.07%；DevKit最新评论仍未确定根因，使用的是连字符session-id/thread-id/H1控制，并非该下划线头的同一对照。必须严格区分，不把第三方数据当本项目测试前后数据或官方通用保证。
+- 拟修复仅SIWC：从稳定OIDC issuer/subject与持久会话ID派生64字符会话头，避开access token及可选metadata，续聊/工具/刷新/重启保持一致；自定义冲突明确提示、相同值去重；旧Codex整套头不恢复。服务端返回缓存键只依据真实terminal字段记presence/HMAC，不用客户端值补造。
+- 完整Issue/PR证据保存在/workspace/work/session-cache-audit；脱敏诊断将观察最终网络interceptor中的实际Request与401重试，而不只读取中间构造对象。
+
+## 缓存与并存迁移阶段：最终本地验证通过，准备持久提交
+
+- SIWC稳定session_id实现完成：按OIDC issuer/subject与持久会话ID生成，实际MockWebServer覆盖文本续聊/工具历史/401两次HTTP尝试/序列化重载、账号会话隔离、大小写与自定义优先级、冲突提示和普通API Key无回归。JSON prompt_cache_key仍按原路径及合法自定义Body生成，不冒充服务端键。
+- 最小诊断观察末尾networkInterceptor的最终wire Request，每次HTTP attempt独立关联同一logical request；request session_id、body key、response真实key使用可比较HMAC，服务端provided/missing/null/invalid/not_observed状态分开。不存在服务端key时matches/changed为null。终态一次保护防止重复覆盖；账号分组也已去掉refresh时可变的accountId/profile，只用provider.id+issuer+subject。
+- 第一次专项测试367项中1项普通API Key对照因Android Log JVM stub失败，已仅在AI单测启用returnDefaultValues；没有改变产品日志。修复后受影响AI全部367/367及完整assemble成功（41秒）。App585/585同阶段通过，未修改的OAuth10/10、搜索22/22继续有效；总984项无失败/错误/跳过。日志/workspace/work/personal-session-cache-tests-build-2.log，JUnit位于各模块build/test-results。
+- Python最终34/34通过，含SQLite真实迁移、真实短期fixture私钥签名验签、权限/部分持久化/冲突保护、双恢复发布门禁和成功下载后仅删除一次性setup Secret。日志/workspace/work/personal-python-tests-3.log。独立审阅未发现签名私钥泄露或绕过门禁。
+- 已实际内部打包检查：包名me.rerere.rikkahub.personal、versionCode199/versionName3.2.0-personal.1、minSdk26、仅arm64-v8a。内部元数据/workspace/work/personal-internal-apk-check/apk-verification.json；本地debug签名不匹配尚未pin的长期身份，未发布也不作为交付。
+- 尚未生成应用长期私钥或声称存储完成。新流程只会在确认Secrets可持久写入后生成一次；主用及恢复副本分别由独立runner读取实际构建，公共pin匹配才允许发布，之后实际公开下载校验。一次性setup Secret在交付验证成功后尽力删除；短期PAT本体不撤销、两个签名Secret不删除。
+- 本阶段代码准备分两个合理提交（产品/测试和安全交付），推送后实际运行Actions验证；若setup权限仍缺，APK jobs保持禁用，不能把测试成功当完成交付。真实SIWC服务端命中前后数据仍缺，第三方99.07%不是本项目结果；不宣称缓存已恢复。

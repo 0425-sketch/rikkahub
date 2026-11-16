@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.ai.UsageSource
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.db.dao.CacheUsageSummary
 import me.rerere.rikkahub.data.db.dao.ConversationDAO
 import me.rerere.rikkahub.data.db.dao.MessageNodeDAO
 import me.rerere.rikkahub.data.db.dao.SourceUsage
@@ -47,6 +48,7 @@ data class UsagePoint(
     val promptTokens: Long,
     val completionTokens: Long,
     val cachedTokens: Long,
+    val cache: CacheUsageSummary = CacheUsageSummary(),
 ) {
     val totalTokens get() = promptTokens + completionTokens
 }
@@ -188,5 +190,6 @@ class StatsVM(
         promptTokens = this?.promptTokens ?: 0,
         completionTokens = this?.completionTokens ?: 0,
         cachedTokens = this?.cachedTokens ?: 0,
+        cache = this?.cache ?: CacheUsageSummary(),
     )
 }

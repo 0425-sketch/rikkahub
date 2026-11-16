@@ -8,6 +8,9 @@ plugins {
 android {
     namespace = "me.rerere.ai"
 
+    // Local protocol tests use real HTTP sockets; Android logging is not part of their contract.
+    testOptions.unitTests.isReturnDefaultValues = true
+
     defaultConfig {
 //        externalNativeBuild {
 //            cmake {
@@ -50,6 +53,7 @@ dependencies {
     // tests
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("com.squareup.okhttp3:mockwebserver:${libs.versions.okhttp.get()}")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

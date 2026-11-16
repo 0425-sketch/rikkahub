@@ -23,6 +23,8 @@ import me.rerere.rikkahub.data.db.dao.UsageRecordDAO
 import me.rerere.rikkahub.data.db.dao.UsageTotals
 import me.rerere.rikkahub.data.db.entity.UsageRecordEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
@@ -85,6 +87,57 @@ class UsageRecorderTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(10, dao.records.single().promptTokens)
+    }
+
+    @Test
+    fun `explicit final cache zero replaces an earlier snapshot and is persisted as known`() = runTest {
+        val provider = FakeProvider(chunks = flow {
+            emit(StreamChunk.Usage(TokenUsage(promptTokens = 128, cachedTokens = 64)))
+            val final = TokenUsage(
+                promptTokens = 128,
+                cachedTokens = 0,
+                cachedTokensReported = true,
+                cacheWriteTokens = 0,
+            )
+            emit(StreamChunk.Usage(final))
+            emit(StreamChunk.Usage(final))
+        })
+        recorder().wrap(provider, tag).streamText(setting, emptyList(), params).toList()
+        testScheduler.advanceUntilIdle()
+
+        val record = dao.records.single()
+        assertEquals(128, record.promptTokens)
+        assertEquals(0, record.cachedTokens)
+        assertTrue(record.promptTokensReported)
+        assertTrue(record.cachedTokensReported)
+        assertEquals(0, record.cacheWriteTokens)
+    }
+
+    @Test
+    fun `a completed request with missing usage is retained as an unknown sample`() = runTest {
+        recorder().wrap(FakeProvider(result = TokenUsage()), tag).generateText(setting, emptyList(), params)
+        testScheduler.advanceUntilIdle()
+
+        val record = dao.records.single()
+        assertFalse(record.promptTokensReported)
+        assertFalse(record.cachedTokensReported)
+        assertNull(record.cacheWriteTokens)
+    }
+
+    @Test
+    fun `independent requests preserve known and missing cache data without collapsing them`() = runTest {
+        val recorder = recorder()
+        recorder.wrap(FakeProvider(result = TokenUsage(promptTokens = 200, cachedTokens = 100, cacheWriteTokens = 30)), tag)
+            .generateText(setting, emptyList(), params)
+        recorder.wrap(FakeProvider(result = TokenUsage(promptTokens = 300)), tag)
+            .generateText(setting, emptyList(), params)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(2, dao.records.size)
+        assertTrue(dao.records[0].cachedTokensReported)
+        assertEquals(30, dao.records[0].cacheWriteTokens)
+        assertFalse(dao.records[1].cachedTokensReported)
+        assertNull(dao.records[1].cacheWriteTokens)
     }
 
     @Test

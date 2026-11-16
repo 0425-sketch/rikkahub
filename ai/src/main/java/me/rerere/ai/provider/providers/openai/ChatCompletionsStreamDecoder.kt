@@ -9,7 +9,6 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.MessageRole
-import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.provider.stream.DecodeResult
 import me.rerere.ai.provider.stream.SseEvent
 import me.rerere.ai.provider.stream.StreamChunkDecoder
@@ -77,7 +76,7 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
                     }
                     choice["finish_reason"]?.jsonPrimitive?.contentOrNull?.let { finishReason = it }
                 }
-                parseUsage(payload["usage"] as? JsonObject)?.let { add(StreamChunk.Usage(it)) }
+                parseChatCompletionsUsage(payload["usage"] as? JsonObject)?.let { add(StreamChunk.Usage(it)) }
             }
         }
         return DecodeResult(chunks)
@@ -164,20 +163,6 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
             )
             else -> error("unknown annotation type: $type")
         }
-    }
-
-    private fun parseUsage(usage: JsonObject?): TokenUsage? {
-        if (usage == null) return null
-        return TokenUsage(
-            promptTokens = usage["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            completionTokens = usage["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            totalTokens = usage["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            cachedTokens = usage["prompt_tokens_details"]?.jsonObjectOrNull
-                ?.get("cached_tokens")?.jsonPrimitive?.intOrNull
-                ?: usage["cached_tokens"]?.jsonPrimitive?.intOrNull
-                ?: usage["prompt_cache_hit_tokens"]?.jsonPrimitive?.intOrNull
-                ?: 0,
-        )
     }
 
     private class ChatCompletionsStreamState {

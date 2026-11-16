@@ -122,7 +122,7 @@ class ChatRequestFactory(
                 model = model,
                 conversationId = conversation.id,
                 workspaceCwd = conversation.workspaceCwd,
-            ),
+            ).forStableChatGPTPrefix(provider),
         )
     }
 
@@ -269,6 +269,10 @@ class ChatRequestFactory(
         return StepRequest(requestMessages, turn.textGenerationParams())
     }
 }
+
+/** Keep tool guidance and declarations in the same stable order after catalog refreshes. */
+internal fun List<Tool>.forStableChatGPTPrefix(provider: ProviderSetting): List<Tool> =
+    if (provider is ProviderSetting.ChatGPT) sortedBy { it.name } else this
 
 /** 会话快照的档位用于本轮每一步；自定义字段按助手、模型顺序合并，模型优先。 */
 internal fun ChatTurnContext.textGenerationParams(): TextGenerationParams = TextGenerationParams(

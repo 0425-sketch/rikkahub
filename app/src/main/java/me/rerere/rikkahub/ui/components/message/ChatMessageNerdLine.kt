@@ -117,11 +117,12 @@ fun ChatMessageNerdLine(
                     StatsItem(
                         icon = { StatsIcon(HugeIcons.Layers01, stringResource(R.string.chat_message_usage_context)) },
                         content = {
-                            Text(text = stringResource(R.string.chat_message_usage_context_short, stats.contextTokens.formatNumber()))
-                            val cached = stats.lastUsage.cachedTokens
-                            if (cached > 0) {
-                                Text(text = stringResource(R.string.chat_message_usage_cached_short, cached.formatNumber()))
-                            }
+                            Text(text = if (stats.lastUsage.promptTokensReported) {
+                                stringResource(R.string.chat_message_usage_context_short, stats.contextTokens.formatNumber())
+                            } else stringResource(R.string.cache_usage_context_unknown))
+                            Text(text = if (stats.lastUsage.cachedTokensReported) {
+                                stringResource(R.string.chat_message_usage_cached_short, stats.lastUsage.cachedTokens.formatNumber())
+                            } else stringResource(R.string.cache_usage_read_unknown_short))
                         }
                     )
                 }
@@ -142,15 +143,38 @@ private fun UsageDetails(stats: NerdStats, contextLength: Int?) {
             contextLength = contextLength,
             modifier = Modifier.padding(bottom = 8.dp),
         )
+        UsageDetailRow(stringResource(R.string.cache_usage_last_read), cacheReadValue(stats.lastUsage))
+        UsageDetailRow(
+            stringResource(R.string.cache_usage_last_write),
+            stats.lastUsage.cacheWriteTokens?.exact() ?: stringResource(R.string.cache_usage_unknown),
+        )
         if (stats.steps > 1) {
             UsageDetailRow(stringResource(R.string.chat_message_usage_step_count), stats.steps.toString())
-            UsageDetailRow(stringResource(R.string.chat_message_usage_total_input), total.promptTokens.exact())
-            if (total.cachedTokens > 0) UsageDetailRow(stringResource(R.string.chat_message_usage_total_cached), total.cachedTokens.exact())
+            UsageDetailRow(
+                stringResource(R.string.chat_message_usage_total_input),
+                when {
+                    total.promptTokensReported -> total.promptTokens.exact()
+                    total.promptTokens > 0 -> stringResource(R.string.cache_usage_partial, total.promptTokens.exact())
+                    else -> stringResource(R.string.cache_usage_unknown)
+                },
+            )
+            UsageDetailRow(stringResource(R.string.chat_message_usage_total_cached), cacheReadValue(total))
+            UsageDetailRow(
+                stringResource(R.string.cache_usage_total_write),
+                total.cacheWriteTokens?.exact() ?: stringResource(R.string.cache_usage_unknown),
+            )
             UsageDetailRow(stringResource(R.string.chat_message_usage_total_output), total.completionTokens.exact())
         }
         if (stats.tps != null) UsageDetailRow(stringResource(R.string.chat_message_usage_speed), "${stats.tps.toFixed(1)} tok/s")
         if (stats.durationMillis != null) UsageDetailRow(stringResource(R.string.chat_message_usage_duration), "${(stats.durationMillis / 1000f).toFixed(1)}s")
     }
+}
+
+@Composable
+private fun cacheReadValue(usage: TokenUsage): String = when {
+    usage.cachedTokensReported -> usage.cachedTokens.exact()
+    usage.cachedTokens > 0 -> stringResource(R.string.cache_usage_partial, usage.cachedTokens.exact())
+    else -> stringResource(R.string.cache_usage_unknown)
 }
 
 private data class UsageSegment(val label: String, val tokens: Int, val color: Color)
@@ -164,12 +188,20 @@ private fun ContextUsageBar(
     contextLength: Int?,
     modifier: Modifier = Modifier,
 ) {
+    if (!lastUsage.promptTokensReported) {
+        UsageDetailRow(stringResource(R.string.chat_message_usage_context), stringResource(R.string.cache_usage_unknown))
+        UsageDetailRow(stringResource(R.string.chat_message_usage_output), lastUsage.completionTokens.exact())
+        return
+    }
     val colorScheme = MaterialTheme.colorScheme
+    val cachedForBar = if (lastUsage.cachedTokensReported && lastUsage.cachedTokens in 0..lastUsage.promptTokens) {
+        lastUsage.cachedTokens
+    } else 0
     val segments = listOf(
-        UsageSegment(stringResource(R.string.chat_message_usage_cached), lastUsage.cachedTokens, colorScheme.primary),
+        UsageSegment(stringResource(R.string.chat_message_usage_cached), cachedForBar, colorScheme.primary),
         UsageSegment(
             stringResource(R.string.chat_message_usage_input),
-            (lastUsage.promptTokens - lastUsage.cachedTokens).coerceAtLeast(0),
+            (lastUsage.promptTokens - cachedForBar).coerceAtLeast(0),
             colorScheme.primary.copy(alpha = 0.45f),
         ),
         UsageSegment(stringResource(R.string.chat_message_usage_output), lastUsage.completionTokens, colorScheme.tertiary),

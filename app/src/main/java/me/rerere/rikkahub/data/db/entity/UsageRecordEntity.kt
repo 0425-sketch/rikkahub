@@ -40,4 +40,10 @@ data class UsageRecordEntity(
     val completionTokens: Int,
     @ColumnInfo("cached_tokens")
     val cachedTokens: Int,
+    @ColumnInfo(name = "prompt_tokens_reported", defaultValue = "0")
+    val promptTokensReported: Boolean = promptTokens > 0,
+    @ColumnInfo(name = "cached_tokens_reported", defaultValue = "0")
+    val cachedTokensReported: Boolean = cachedTokens > 0,
+    @ColumnInfo("cache_write_tokens")
+    val cacheWriteTokens: Int? = null,
 )

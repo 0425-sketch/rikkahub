@@ -22,7 +22,6 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.encodeToJsonElement
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -30,7 +29,6 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
-import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.Model
@@ -73,6 +71,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
+import okio.Buffer
 import kotlin.time.Clock
 
 private const val TAG = "ResponseAPI"
@@ -85,6 +84,9 @@ private const val TAG = "ResponseAPI"
 internal class ResponsesEndpoint(
     val url: String,
     val capabilities: ResponseProviderCapabilities = ResponseProviderCapabilities(),
+    // Opt-in local observers run after final body validation/authentication. Never affect a request.
+    val observeRequest: ((Request, JsonObject) -> Unit)? = null,
+    val observeCompletedResponse: ((JsonObject) -> Unit)? = null,
     // 构建请求时调用，负责请求头和鉴权；可挂起，以便先刷新 token
     val configureRequest: suspend Request.Builder.() -> Unit,
 )
@@ -183,6 +185,8 @@ class ResponseAPI(
         }
 
         val listener = object : EventSourceListener() {
+            private var observedCompletedResponse = false
+
             override fun onEvent(
                 eventSource: EventSource,
                 id: String?,
@@ -192,6 +196,13 @@ class ResponseAPI(
                 if (endpoint.capabilities.logPayloads) Log.d(TAG, "onEvent: $id/$type $data")
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
+                    if (result.completed && !observedCompletedResponse && endpoint.observeCompletedResponse != null) {
+                        observedCompletedResponse = true
+                        runCatching {
+                            val event = json.parseToJsonElement(data) as? JsonObject
+                            (event?.get("response") as? JsonObject)?.let(endpoint.observeCompletedResponse)
+                        }
+                    }
                     sendChunks(result.chunks)
                     if (result.completed) close()
                 } catch (e: Throwable) {
@@ -226,7 +237,23 @@ class ResponseAPI(
             }
         }
 
-        val eventSource = client.newEventSource(request, listener)
+        // Observe only opt-in endpoints at the last network interceptor, including auth retries.
+        // The shared pool/authenticator remain unchanged. Never consume one-shot/duplex bodies.
+        val observedClient = if (endpoint.observeRequest == null) client else client.newBuilder()
+            .addNetworkInterceptor { chain ->
+                val wireRequest = chain.request()
+                runCatching {
+                    wireRequest.body?.takeUnless { it.isOneShot() || it.isDuplex() }?.let { body ->
+                        val buffer = Buffer()
+                        body.writeTo(buffer)
+                        (json.parseToJsonElement(buffer.readUtf8()) as? JsonObject)?.let { wireBody ->
+                            endpoint.observeRequest.invoke(wireRequest, wireBody)
+                        }
+                    }
+                }
+                chain.proceed(wireRequest)
+            }.build()
+        val eventSource = observedClient.newEventSource(request, listener)
 
         awaitClose {
             eventSource.cancel()
@@ -732,21 +759,11 @@ class ResponseAPI(
                 parts = parts,
             ),
             finishReason = jsonObject["status"]?.jsonPrimitive?.contentOrNull,
-            usage = parseTokenUsage(jsonObject["usage"]?.jsonObject)
+            usage = parseResponsesUsage(jsonObject["usage"]?.jsonObject)
         )
     }
 
-    private fun parseTokenUsage(jsonObject: JsonObject?): TokenUsage? {
-        if (jsonObject == null) return null
-        return TokenUsage(
-            promptTokens = jsonObject["input_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            completionTokens = jsonObject["output_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            totalTokens = jsonObject["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            cachedTokens =
-            jsonObject["input_tokens_details"]?.jsonObjectOrNull?.get("cached_tokens")?.jsonPrimitive?.intOrNull
-                ?: 0
-        )
-    }
+
 }
 
 // function_call_output.output 可以是字符串，也可以是 input_text 等内容数组

@@ -7,6 +7,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.core.sum
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.StreamChunkHandler
@@ -244,12 +245,15 @@ private fun errorOutput(error: String): List<UIMessagePart> =
     listOf(UIMessagePart.Text(buildJsonObject { put("error", error) }.toString()))
 
 // 把本步的 usage 和生成耗时累加到之前步骤的统计上；接收者只带本步的 usage
-private fun UIMessage.withStepStats(stepBase: UIMessage, stepTime: Duration): UIMessage = copy(
-    usage = stepBase.usage.sum(usage),
-    generationTimeMs = (stepBase.generationTimeMs ?: 0L) + stepTime.inWholeMilliseconds,
-    // 上下文占用只看最后一次请求，usage 是多步累计值；本步没返回 usage 时沿用之前步骤的
-    lastUsage = usage ?: stepBase.lastUsage,
-    stepCount = (stepBase.stepCount ?: 0) + 1,
-)
+private fun UIMessage.withStepStats(stepBase: UIMessage, stepTime: Duration): UIMessage {
+    val previous = stepBase.usage ?: TokenUsage().takeIf { (stepBase.stepCount ?: 0) > 0 }
+    return copy(
+        usage = if (usage == null && previous == null) null else previous.sum(usage ?: TokenUsage()),
+        generationTimeMs = (stepBase.generationTimeMs ?: 0L) + stepTime.inWholeMilliseconds,
+        // 不把上一请求的缓存命中/上下文假装成本步统计；空快照明确表示未知。
+        lastUsage = usage ?: TokenUsage(),
+        stepCount = (stepBase.stepCount ?: 0) + 1,
+    )
+}
 
 private fun now() = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())

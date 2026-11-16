@@ -289,7 +289,9 @@ internal class ResponseApiStreamDecoder(
         }
 
         return buildList {
-            parseUsage(response?.get("usage") as? JsonObject)?.let { add(StreamChunk.Usage(it)) }
+            val usage = parseResponsesUsage(response?.get("usage") as? JsonObject)
+                ?: TokenUsage().takeIf { requireCompletedResponse }
+            usage?.let { add(StreamChunk.Usage(it)) }
             addAll(state.finish(
                 finishReason = finishReason,
                 responseId = response?.get("id")?.jsonPrimitive?.contentOrNull,
@@ -325,17 +327,6 @@ internal class ResponseApiStreamDecoder(
                 state.endServerTool(itemId, status = ServerToolStatus.FAILED)
             else -> state.startServerTool(itemId, itemType.removeSuffix("_call"))
         }
-    }
-
-    private fun parseUsage(usage: JsonObject?): TokenUsage? {
-        if (usage == null) return null
-        return TokenUsage(
-            promptTokens = usage["input_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            completionTokens = usage["output_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            totalTokens = usage["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            cachedTokens = usage["input_tokens_details"]?.jsonObjectOrNull
-                ?.get("cached_tokens")?.jsonPrimitive?.intOrNull ?: 0,
-        )
     }
 
     private class ResponseStreamState {

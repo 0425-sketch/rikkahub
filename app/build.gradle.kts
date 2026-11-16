@@ -52,8 +52,8 @@ android {
     }
 
     signingConfigs {
-        // Optional secure CI injection. Never check a keystore or its passwords into Git.
-        // Without these variables the isolated test variant uses Android's debug signer.
+        // Fixed personal signing is restored from durable Actions secrets before release builds.
+        // Local compile/test tasks may use debug defaults, but publication never accepts them.
         providers.environmentVariable("CHATGPT_TEST_KEYSTORE").orNull?.let { keystorePath ->
             create("chatgptTest") {
                 storeFile = file(keystorePath)
@@ -176,15 +176,15 @@ baselineProfile {
 // 不手动关的话生成用的包会被 R8 内联、合并类，profile 里记下的是优化后的类和方法
 androidComponents {
     onVariants(selector().withBuildType("debug").withFlavor("distribution" to "github")) { variant ->
-        // Keep the installed ChatGPT test application's identity. Publication additionally
-        // requires its original signing certificate; a new debug signer is not an upgrade.
-        variant.applicationId.set("me.rerere.rikkahub.chatgpt.debug")
+        // A distinct identity keeps the previously installed app and all of its data intact.
+        // Durable signing and two clean restore builds are required before publication.
+        variant.applicationId.set("me.rerere.rikkahub.personal")
         variant.outputs.forEach { output ->
-            output.versionCode.set(198)
-            output.versionName.set("3.2.0-chatgpt.1")
+            output.versionCode.set(199)
+            output.versionName.set("3.2.0-personal.1")
         }
-        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-chatgpt.1\"", null))
-        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"198\"", null))
+        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-personal.1\"", null))
+        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"199\"", null))
         android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
             variant.signingConfig?.from(signingConfig)
         }

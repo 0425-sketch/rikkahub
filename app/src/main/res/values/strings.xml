@@ -1889,4 +1889,16 @@
   <string name="reasoning_chatgpt_level_unsupported">The ChatGPT model catalog does not declare support for this level</string>
   <string name="reasoning_chatgpt_auto">Use the model default</string>
   <string name="reasoning_chatgpt_effort">Request level: %1$s</string>
+  <string name="cache_usage_unknown">Unknown (not reported)</string>
+  <string name="cache_usage_partial">At least %1$s (partly unreported)</string>
+  <string name="cache_usage_write">Cache writes</string>
+  <string name="cache_usage_context_unknown">Context unknown</string>
+  <string name="cache_usage_read_unknown_short">Cache unknown</string>
+  <string name="cache_usage_last_read">Cache reads (last request)</string>
+  <string name="cache_usage_last_write">Cache writes (last request)</string>
+  <string name="cache_usage_total_write">Cache writes (all steps)</string>
+  <string name="stats_page_cache_coverage">Cache hit rate uses only the %1$d of %2$d requests with valid input and cache-read counts both reported. Missing data is not counted as zero.</string>
+  <string name="setting_provider_page_chatgpt_cache_diagnostics_export">Save redacted cache diagnostics</string>
+  <string name="setting_provider_page_chatgpt_cache_diagnostics_desc">Saves this account’s latest 40 requests from the current app session: token statistics and request fingerprints, without messages or credentials. Records are discarded when the app process ends and are never uploaded automatically.</string>
+  <string name="app_personal_name">RikkaHub Personal</string>
 </resources>

@@ -932,6 +932,9 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             completionTokens = completionTokens,
             totalTokens = promptTokens + completionTokens,
             cachedTokens = cachedInputTokens,
+            promptTokensReported = usageJson["input_tokens"]?.jsonPrimitive?.intOrNull != null,
+            cachedTokensReported = usageJson["cache_read_input_tokens"]?.jsonPrimitive?.intOrNull != null,
+            cacheWriteTokens = usageJson["cache_creation_input_tokens"]?.jsonPrimitive?.intOrNull?.takeIf { it >= 0 },
         )
     }
 }

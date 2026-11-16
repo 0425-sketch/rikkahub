@@ -61,6 +61,7 @@ import me.rerere.hugeicons.stroke.Upload02
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.UsageSource
+import me.rerere.rikkahub.data.db.dao.CacheUsageSummary
 import me.rerere.rikkahub.data.db.dao.SourceUsage
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceButtons
@@ -136,7 +137,7 @@ fun StatsPage(vm: StatsVM = koinViewModel()) {
                     )
                 }
                 usage?.let { usage ->
-                    if (usage.totals.promptTokens + usage.totals.completionTokens == 0L) {
+                    if (usage.totals.cache.requestCount == 0L) {
                         item {
                             EmptyUsageCard(modifier = Modifier.padding(horizontal = 8.dp))
                         }
@@ -431,7 +432,7 @@ private fun UsageTotalsGrid(usage: UsageStats, modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f),
                 icon = HugeIcons.Upload02,
                 label = stringResource(R.string.stats_page_input_tokens),
-                value = formatTokens(totals.promptTokens),
+                value = cacheCountLabel(totals.promptTokens, totals.cache.promptReportedRequestCount, totals.cache.requestCount),
             )
             StatCard(
                 modifier = Modifier.weight(1f),
@@ -448,21 +449,42 @@ private fun UsageTotalsGrid(usage: UsageStats, modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f),
                 icon = HugeIcons.Zap,
                 label = stringResource(R.string.stats_page_cached_tokens),
-                value = formatTokens(totals.cachedTokens),
+                value = cacheCountLabel(totals.cachedTokens, totals.cache.cacheReportedRequestCount, totals.cache.requestCount),
             )
             StatCard(
                 modifier = Modifier.weight(1f),
                 icon = HugeIcons.PercentCircle,
                 label = stringResource(R.string.stats_page_cache_hit_rate),
-                value = if (totals.promptTokens > 0) {
-                    "%.1f%%".format(totals.cachedTokens * 100.0 / totals.promptTokens)
-                } else {
-                    "-"
-                },
+                value = totals.cache.hitRatePercent?.let(::formatCacheHitRate)
+                    ?: stringResource(R.string.cache_usage_unknown),
             )
         }
+        Text(
+            text = stringResource(
+                R.string.stats_page_cache_coverage,
+                totals.cache.cacheRateRequestCount,
+                totals.cache.requestCount,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = "${stringResource(R.string.cache_usage_write)} ${cacheCountLabel(totals.cache.cacheWriteTokens, totals.cache.cacheWriteReportedRequestCount, totals.cache.requestCount)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
+
+@Composable
+private fun cacheCountLabel(tokens: Long?, reportedCount: Long, requestCount: Long): String = when {
+    tokens == null || (reportedCount == 0L && tokens == 0L) -> stringResource(R.string.cache_usage_unknown)
+    reportedCount < requestCount -> stringResource(R.string.cache_usage_partial, formatTokens(tokens))
+    else -> formatTokens(tokens)
+}
+
+internal fun formatCacheHitRate(percent: Double): String =
+    if (percent > 0.0 && percent < 0.1) "<0.1%" else "%.1f%%".format(percent)
 
 /**
  * 每天（全部范围时每月）的总用量柱状图，点一根柱子在上方查看那天的输入、缓存和输出。
@@ -498,6 +520,7 @@ private fun UsageTrendCard(usage: UsageStats, modifier: Modifier = Modifier) {
                 promptTokens = selected?.promptTokens ?: usage.totals.promptTokens,
                 cachedTokens = selected?.cachedTokens ?: usage.totals.cachedTokens,
                 completionTokens = selected?.completionTokens ?: usage.totals.completionTokens,
+                cache = selected?.cache ?: usage.totals.cache,
             )
             UsageColumnChart(
                 points = usage.points,
@@ -510,7 +533,13 @@ private fun UsageTrendCard(usage: UsageStats, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun UsageReadout(label: String, promptTokens: Long, cachedTokens: Long, completionTokens: Long) {
+private fun UsageReadout(
+    label: String,
+    promptTokens: Long,
+    cachedTokens: Long,
+    completionTokens: Long,
+    cache: CacheUsageSummary,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = label,
@@ -518,13 +547,11 @@ private fun UsageReadout(label: String, promptTokens: Long, cachedTokens: Long, 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = formatTokens(promptTokens + completionTokens),
+            text = cacheCountLabel(promptTokens + completionTokens, cache.promptReportedRequestCount, cache.requestCount),
             style = MaterialTheme.typography.headlineSmall,
         )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             listOf(
-                R.string.chat_message_usage_input to promptTokens,
-                R.string.chat_message_usage_cached to cachedTokens,
                 R.string.chat_message_usage_output to completionTokens,
             ).forEach { (label, tokens) ->
                 Text(
@@ -533,6 +560,16 @@ private fun UsageReadout(label: String, promptTokens: Long, cachedTokens: Long, 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            Text(
+                text = "${stringResource(R.string.chat_message_usage_input)} ${cacheCountLabel(promptTokens, cache.promptReportedRequestCount, cache.requestCount)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "${stringResource(R.string.chat_message_usage_cached)} ${cacheCountLabel(cachedTokens, cache.cacheReportedRequestCount, cache.requestCount)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -96,7 +96,8 @@ data class UIMessage(
     fun lastRequestUsage(): TokenUsage? = lastUsage ?: usage
 
     /** 最后一次请求结束时的上下文占用（prompt + completion） */
-    fun contextTokens(): Int? = lastRequestUsage()?.let { it.promptTokens + it.completionTokens }
+    fun contextTokens(): Int? = lastRequestUsage()?.takeIf { it.promptTokensReported }
+        ?.let { it.promptTokens + it.completionTokens }
 
     /**
      * 用快照还原出一个只用于展示名称和图标的 [Model]

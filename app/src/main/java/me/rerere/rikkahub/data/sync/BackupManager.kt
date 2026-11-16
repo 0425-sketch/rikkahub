@@ -124,11 +124,17 @@ class BackupManager(
                     }
                     require(restoredEntries > 0) { "No selected data found in the backup" }
                     require(!stagedWal.exists() || stagedDatabase.exists()) { "Backup WAL has no matching database" }
+                    val pathRemapper = BackupPathRemapper(
+                        targetFilesDir = context.filesDir,
+                        targetPackage = context.packageName,
+                        restoredPaths = seen.filterTo(mutableSetOf()) { it.substringBefore('/') in ATTACHMENT_FOLDERS },
+                    )
                     if (stagedDatabase.exists()) {
                         DatabaseBackup.normalize(context, stagedDatabase)
                         // Reject unsupported schemas before publishing; run supported old migrations on the copy.
                         val room = AppDatabaseFactory.create(context, stagedDatabase.absolutePath)
                         try {
+                            pathRemapper.stagedDatabase(room.openHelper.writableDatabase)
                             DatabaseBackup.checkpoint(room.openHelper.writableDatabase)
                         } finally {
                             room.close()
@@ -147,7 +153,10 @@ class BackupManager(
                         }
                         require(!settings.init) { "Backup contains uninitialized settings" }
                         // Persist the migrated value once, including generated IDs, for restart/retry consistency.
-                        PendingRestore.writeDurably(settingsFile, json.encodeSettings(settings, json.launchCountOf(migrated)))
+                        PendingRestore.writeDurably(
+                            settingsFile,
+                            json.encodeSettings(pathRemapper.settings(settings), json.launchCountOf(migrated)),
+                        )
                     }
                     currentCoroutineContext().ensureActive()
                     restore.publish(staging)

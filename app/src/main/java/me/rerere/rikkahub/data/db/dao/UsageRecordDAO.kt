@@ -1,9 +1,23 @@
 package me.rerere.rikkahub.data.db.dao
 
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.Query
 import me.rerere.rikkahub.data.db.entity.UsageRecordEntity
+
+// A rate may only compare cache reads and input tokens from the same reported samples.
+private const val KNOWN_CACHE_SAMPLE =
+    "prompt_tokens_reported = 1 AND cached_tokens_reported = 1 AND prompt_tokens >= cached_tokens AND cached_tokens >= 0"
+private const val CACHE_USAGE_PROJECTION =
+    "COUNT(*) AS requestCount, " +
+        "COALESCE(SUM(CASE WHEN prompt_tokens_reported = 1 THEN 1 ELSE 0 END), 0) AS promptReportedRequestCount, " +
+        "COALESCE(SUM(CASE WHEN cached_tokens_reported = 1 THEN 1 ELSE 0 END), 0) AS cacheReportedRequestCount, " +
+        "COALESCE(SUM(CASE WHEN " + KNOWN_CACHE_SAMPLE + " THEN 1 ELSE 0 END), 0) AS cacheRateRequestCount, " +
+        "COALESCE(SUM(CASE WHEN " + KNOWN_CACHE_SAMPLE + " THEN prompt_tokens ELSE 0 END), 0) AS cacheRatePromptTokens, " +
+        "COALESCE(SUM(CASE WHEN " + KNOWN_CACHE_SAMPLE + " THEN cached_tokens ELSE 0 END), 0) AS cacheRateCachedTokens, " +
+        "SUM(cache_write_tokens) AS cacheWriteTokens, " +
+        "COALESCE(SUM(CASE WHEN cache_write_tokens IS NOT NULL THEN 1 ELSE 0 END), 0) AS cacheWriteReportedRequestCount "
 
 @Dao
 interface UsageRecordDAO {
@@ -13,7 +27,7 @@ interface UsageRecordDAO {
     @Query(
         "SELECT COALESCE(SUM(prompt_tokens), 0) AS promptTokens, " +
             "COALESCE(SUM(completion_tokens), 0) AS completionTokens, " +
-            "COALESCE(SUM(cached_tokens), 0) AS cachedTokens " +
+            "COALESCE(SUM(cached_tokens), 0) AS cachedTokens, " + CACHE_USAGE_PROJECTION +
             "FROM usage_record WHERE created_at >= :since"
     )
     suspend fun getTotals(since: Long = 0): UsageTotals
@@ -22,7 +36,7 @@ interface UsageRecordDAO {
     @Query(
         "SELECT strftime(:format, created_at / 1000, 'unixepoch', 'localtime') AS bucket, " +
             "SUM(prompt_tokens) AS promptTokens, SUM(completion_tokens) AS completionTokens, " +
-            "SUM(cached_tokens) AS cachedTokens " +
+            "SUM(cached_tokens) AS cachedTokens, " + CACHE_USAGE_PROJECTION +
             "FROM usage_record WHERE created_at >= :since GROUP BY bucket ORDER BY bucket"
     )
     suspend fun getTotalsByBucket(format: String, since: Long): List<UsageBucket>
@@ -38,7 +52,7 @@ interface UsageRecordDAO {
     @Query(
         "SELECT model_id AS modelId, MAX(model_name) AS modelName, " +
             "SUM(prompt_tokens) AS promptTokens, SUM(completion_tokens) AS completionTokens, " +
-            "SUM(cached_tokens) AS cachedTokens " +
+            "SUM(cached_tokens) AS cachedTokens, " + CACHE_USAGE_PROJECTION +
             "FROM usage_record WHERE created_at >= :since " +
             "GROUP BY COALESCE(model_id, model_name) " +
             "ORDER BY SUM(prompt_tokens + completion_tokens) DESC"
@@ -47,7 +61,7 @@ interface UsageRecordDAO {
 
     @Query(
         "SELECT source, SUM(prompt_tokens) AS promptTokens, SUM(completion_tokens) AS completionTokens, " +
-            "SUM(cached_tokens) AS cachedTokens " +
+            "SUM(cached_tokens) AS cachedTokens, " + CACHE_USAGE_PROJECTION +
             "FROM usage_record WHERE created_at >= :since " +
             "GROUP BY source ORDER BY SUM(prompt_tokens + completion_tokens) DESC"
     )
@@ -58,6 +72,7 @@ data class UsageTotals(
     val promptTokens: Long = 0,
     val completionTokens: Long = 0,
     val cachedTokens: Long = 0,
+    @Embedded val cache: CacheUsageSummary = CacheUsageSummary(),
 )
 
 data class DayCount(
@@ -70,6 +85,7 @@ data class UsageBucket(
     val promptTokens: Long,
     val completionTokens: Long,
     val cachedTokens: Long,
+    @Embedded val cache: CacheUsageSummary = CacheUsageSummary(),
 )
 
 data class ModelUsage(
@@ -78,6 +94,7 @@ data class ModelUsage(
     val promptTokens: Long,
     val completionTokens: Long,
     val cachedTokens: Long,
+    @Embedded val cache: CacheUsageSummary = CacheUsageSummary(),
 )
 
 data class SourceUsage(
@@ -85,4 +102,28 @@ data class SourceUsage(
     val promptTokens: Long,
     val completionTokens: Long,
     val cachedTokens: Long,
+    @Embedded val cache: CacheUsageSummary = CacheUsageSummary(),
 )
+
+/** Coverage is kept next to the counts so missing cache fields never become a zero-percent claim. */
+data class CacheUsageSummary(
+    val requestCount: Long = 0,
+    val promptReportedRequestCount: Long = 0,
+    val cacheReportedRequestCount: Long = 0,
+    val cacheRateRequestCount: Long = 0,
+    val cacheRatePromptTokens: Long = 0,
+    val cacheRateCachedTokens: Long = 0,
+    val cacheWriteTokens: Long? = null,
+    val cacheWriteReportedRequestCount: Long = 0,
+) {
+    val hitRatePercent: Double?
+        get() = if (cacheRateRequestCount > 0 && cacheRatePromptTokens > 0 &&
+            cacheRateCachedTokens in 0..cacheRatePromptTokens
+        ) cacheRateCachedTokens * 100.0 / cacheRatePromptTokens else null
+
+    val cacheReadIsPartial: Boolean
+        get() = cacheReportedRequestCount < requestCount
+
+    val cacheWriteIsPartial: Boolean
+        get() = cacheWriteReportedRequestCount < requestCount
+}

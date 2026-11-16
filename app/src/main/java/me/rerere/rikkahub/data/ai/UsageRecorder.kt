@@ -51,7 +51,6 @@ class UsageRecorder(
         UsageRecordingProvider(provider, tag)
 
     private fun record(tag: UsageTag, providerSetting: ProviderSetting, params: TextGenerationParams, usage: TokenUsage) {
-        if (usage.promptTokens <= 0 && usage.completionTokens <= 0) return
         val record = UsageRecordEntity(
             createdAt = System.currentTimeMillis(),
             source = tag.source.name,
@@ -63,6 +62,9 @@ class UsageRecorder(
             promptTokens = usage.promptTokens,
             completionTokens = usage.completionTokens,
             cachedTokens = usage.cachedTokens,
+            promptTokensReported = usage.promptTokensReported,
+            cachedTokensReported = usage.cachedTokensReported,
+            cacheWriteTokens = usage.cacheWriteTokens,
         )
         // Room 的 suspend 写入自己会切到后台线程
         scope.launch {

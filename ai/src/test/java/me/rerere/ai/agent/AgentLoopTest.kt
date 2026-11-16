@@ -450,6 +450,62 @@ class AgentLoopTest {
     }
 
     @Test
+    fun `tool loop preserves per request cache accounting and explicit zero across reload`() = runTest {
+        provider.stream {
+            toolCall("call-1", "search")
+            emit(StreamChunk.Usage(TokenUsage(promptTokens = 2048, completionTokens = 10, cachedTokens = 1024, cacheWriteTokens = 64)))
+            finish()
+        }
+        provider.stream {
+            text("answer")
+            emit(StreamChunk.Usage(TokenUsage(promptTokens = 3072, completionTokens = 20, cachedTokensReported = true, cacheWriteTokens = 0)))
+            finish()
+        }
+        val completed = runToEnd(request(tools = listOf(tool("search")))).finished().message
+        val message = me.rerere.ai.util.json.decodeFromString<UIMessage>(me.rerere.ai.util.json.encodeToString(completed))
+        assertEquals(5120, message.usage!!.promptTokens)
+        assertEquals(1024, message.usage!!.cachedTokens)
+        assertTrue(message.usage!!.cachedTokensReported)
+        assertEquals(64, message.usage!!.cacheWriteTokens)
+        assertEquals(3072, message.lastUsage!!.promptTokens)
+        assertEquals(0, message.lastUsage!!.cachedTokens)
+        assertTrue(message.lastUsage!!.cachedTokensReported)
+        assertEquals(0, message.lastUsage!!.cacheWriteTokens)
+        assertEquals(2, message.stepCount)
+    }
+
+    @Test
+    fun `missing final usage never reuses the previous tool request cache result`() = runTest {
+        provider.stream {
+            toolCall("call-1", "search")
+            emit(StreamChunk.Usage(TokenUsage(promptTokens = 2048, cachedTokens = 1024)))
+            finish()
+        }
+        provider.stream { text("answer"); finish() }
+        val message = runToEnd(request(tools = listOf(tool("search")))).finished().message
+        assertEquals(1024, message.usage!!.cachedTokens)
+        assertFalse(message.usage!!.cachedTokensReported)
+        assertFalse(message.usage!!.promptTokensReported)
+        assertEquals(0, message.lastUsage!!.cachedTokens)
+        assertFalse(message.lastUsage!!.cachedTokensReported)
+        assertFalse(message.lastRequestUsage()!!.promptTokensReported)
+    }
+
+    @Test
+    fun `missing earlier step statistics keep later known cache totals partial`() = runTest {
+        provider.stream { toolCall("call-1", "search"); finish() }
+        provider.stream {
+            text("answer")
+            emit(StreamChunk.Usage(TokenUsage(promptTokens = 3072, cachedTokens = 1024)))
+            finish()
+        }
+        val message = runToEnd(request(tools = listOf(tool("search")))).finished().message
+        assertEquals(1024, message.usage!!.cachedTokens)
+        assertFalse(message.usage!!.cachedTokensReported)
+        assertTrue(message.lastUsage!!.cachedTokensReported)
+    }
+
+    @Test
     fun `stream retry starts the step over and keeps the message id`() = runTest {
         provider.stream {
             text("partial")
