@@ -348,3 +348,13 @@
 - 此前当前GitHub连接查询Secrets public-key实际403（/workspace/work/personal-signing-permissions.json），没有可用Secrets写权限。不能用普通GITHUB_TOKEN、旧已撤销PAT或临时runner存储绕过此门禁。
 - 待全部独立云端测试完成后，唯一需要用户配置的项目：在https://github.com/0425-sketch/rikkahub/settings/secrets/actions/new 创建Actions repository Secret `RIKKAHUB_SIGNING_SETUP_TOKEN`，值为仅此仓库、Secrets读写权限、短有效期fine-grained PAT。令牌只填GitHub Secret，不通过聊天。官方文档支持预填new token的name/target_name/expires_in/secrets=write，但仓库需明确Only select repositories选rikkahub。
 - 配置后继续动作：更新docs/chatgpt-signing-bootstrap-request.txt并提交push触发新bootstrap→下载仅公开signing-identity/persistence回执并核对→将公开certificate_sha256固定至docs/chatgpt-personal-signing.json→提交push新main run→两个独立runner分别恢复主/备份Secret实际构建→publisher核对两APK证书/包名及job身份→Release上传和公开下载验证→主代理独立再次下载核验→最终给新APK链接。此任务仍未交付完成。
+
+## 云端验证完成：等待唯一必要安全配置，未交付APK
+
+- 主Actions43904892084最终success；exact source eebc76d112c94b93b4aac54d6601c9c8c4576ab6。validate job133430971329成功，Gradle BUILD SUCCESSFUL in 6m 1s，Python34/34通过。签名主/备份构建及publish均因空pin正确skipped；工作流success仅代表当前验证成功，不能称长期签名恢复或APK交付成功。
+- 已实际下载artifact14245956840，ZIP SHA-256 `3afa488918c1c50cea4d991cbd76ef50b990af4af14ba91ae585ec6fd4f9acca` 与GitHub digest一致。独立逐文件核对139份JUnit XML及实际testcase：OAuth10、AI367、搜索22、App585，总984项，failure/error/skipped全部0。证据/workspace/work/actions-43904892084/independent-test-verification.json，完整日志validate-complete.log，ZIP personal-tests.zip，XML test-xml/。
+- 截至此条，所有不依赖签名存储权限的源码修改、测试、内部ARM64完整打包、CI验证、提交推送均完成。源码已提交cbf3552b/eebc76d1，进度此前4b9ce31a已推送；本条随后以文档提交推送。没有任何未提交产品改动，没有新版Release/APK公开下载链接，没有应用长期私钥生成或已存储的声明。
+- 缓存最终边界：已确认默认SIWC路径缺少session_id，以及unknown/zero和工具用量汇总的客户端缺陷；已修并在实际loopback HTTP请求上验证。手机近零究竟是服务端miss、统计缺失还是两者组合仍无本账号原始证据，不能宣称已恢复。导出当前进程/当前账号最近40次wire请求的脱敏诊断已包含新包，便于安装后在长前缀纯文本/工具轮次对照真实返回；不要求交出ChatGPT令牌。
+- 网络失败自动重试仍沿用原有关闭策略；后续发起同一聊天请求继续从同一持久会话ID派生session_id。401刷新已用真实MockWebServer捕获两次最终HTTP验证头与body稳定。
+- 唯一需用户的配置仍为 `RIKKAHUB_SIGNING_SETUP_TOKEN`，限仓库0425-sketch/rikkahub、Secrets read/write、建议1天有效期，值只保存在GitHub Actions Secret。准确入口https://github.com/0425-sketch/rikkahub/settings/secrets/actions/new；可预填创建页https://github.com/settings/personal-access-tokens/new?name=RikkaHub-signing-setup&target_name=0425-sketch&expires_in=1&secrets=write，仍需选Only select repositories→rikkahub。当前连接403与实际bootstrap SETUP_PERMISSION是需此配置的依据，不是再次请求改安装方式。
+- 下一轮恢复必须先读本文件、核对Git远端、确认该配置已完成，再按上一节具体动作接续。不要重跑旧签名调查，不丢弃已通过的缓存/工具/思考/搜索/迁移修复，不将暂停于必要权限配置视为完成交付。
