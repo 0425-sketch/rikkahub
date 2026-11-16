@@ -35,6 +35,9 @@ jobs:
           EXPECTED_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
+      - name: Verify the upgrade publication guard
+        run: python3 -m unittest discover -s tools/tests -p 'test_chatgpt_release_signing.py'
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -100,7 +103,7 @@ jobs:
                   env.write(f"CHATGPT_TEST_KEYSTORE={path}\n")
               print("Using securely configured fixed signing key.")
           else:
-              print("Using a temporary debug signer for the independent test package; future upgrade signing is not persisted.")
+              print("Original release signing key is unavailable. Tests and APK packaging can run, but the certificate gate will block incompatible update publication.")
           PY
 
       - name: Run protocol and regression tests and build current ARM64 APK
@@ -113,10 +116,10 @@ jobs:
           ./gradlew --no-daemon --no-configuration-cache --max-workers=2 \
             '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process \
-            :oauth:testDebugUnitTest :ai:testDebugUnitTest :app:testGithubDebugUnitTest \
+            :oauth:testDebugUnitTest :ai:testDebugUnitTest :search:testDebugUnitTest :app:testGithubDebugUnitTest \
             :app:assembleGithubDebug
 
-      - name: Verify APK, publish unique prerelease and verify public download
+      - name: Require original signing certificate, then publish and verify public download
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -135,7 +138,9 @@ jobs:
           path: |
             oauth/build/test-results/testDebugUnitTest/*.xml
             ai/build/test-results/testDebugUnitTest/*.xml
+            search/build/test-results/testDebugUnitTest/*.xml
             app/build/test-results/testGithubDebugUnitTest/*.xml
+            work/chatgpt-delivery/apk-verification.json
             work/chatgpt-delivery/build-provenance.json
             work/chatgpt-delivery/verified-delivery.json
 

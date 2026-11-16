@@ -201,3 +201,9 @@
 - 原版标题/建议使用快速模型和它的独立档位；自动压缩没有独立模型配置，沿原版复用当前会话模型/档位/工具前缀，测试已确认。翻译只在有效ChatGPT路由补带所选模型自身Body/Headers，其他Provider保持原行为。
 - 独立审阅确认App有效Provider/UI/一次提示/DataStore字段/会话覆盖后过滤及其他Provider隔离，未发现新实质问题；源码和测试冻结。普通API Key/Gemini相关原有测试保持通过。真机新的工具/网络与真实账号逐档服务端接受仍未测。
 - 本应用阶段随本次提交推送；接下来提交交付门禁并触发精确提交Actions，同时本地完整ARM64打包核对versionCode198和原证书。签名不匹配不得发布Release或给覆盖安装链接。
+
+## 第二轮阶段：已推送源码，准备Actions
+
+- 已推送合理代码阶段：搜索 `274eb04d`、AI协议/思考 `2b81be52`、App设置/辅助请求/版本198 `59e7bc7b`。应用与AI源码无未提交修改。
+- 发布脚本现固定校验上一版证书 `369f5d9de364514a92337b02efc50ce5c35bfb53753c325286c0efcaabc5b497`，在任何Release创建/上传之前检查；不接受通过调用参数更换期望值。不匹配时仅保留公开apk-verification.json，不泄露签名材料，不发布误导更新。
+- 工作流保持原exact github.sha checkout与现有构建设置，加入搜索测试/报告和4项升级门禁测试，versionCode198同包名。Python4项重新通过、语法及workflow YAML通过、git diff --check通过。以下交付提交将触发新Actions，需核对实际headSHA、测试/构建结果和签名门禁；不得重复以缺失原key的同一路径尝试发布。

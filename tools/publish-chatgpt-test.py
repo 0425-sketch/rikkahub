@@ -18,8 +18,12 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.chatgpt.debug"
-VERSION_CODE = 197
-VERSION_NAME = "3.2.0-chatgpt"
+VERSION_CODE = 198
+VERSION_NAME = "3.2.0-chatgpt.1"
+PREVIOUS_VERSION_CODE = 197
+# Public certificate from the previously delivered APK. Never make this a caller override:
+# publication must preserve the installed application's signing identity and its private data.
+EXPECTED_UPGRADE_CERTIFICATE_SHA256 = "369f5d9de364514a92337b02efc50ce5c35bfb53753c325286c0efcaabc5b497"
 
 # Reuse the reviewed HTTPS redirect restrictions and redacted CLI error handling.
 # Its old credential_env() is deliberately never called: only Actions GITHUB_TOKEN is used.
@@ -42,7 +46,7 @@ def inspect_apk(apk, build_tools):
     ).stdout
     identity = re.search(r"^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'", badging, re.M)
     if not identity or identity.groups() != (PACKAGE, str(VERSION_CODE), VERSION_NAME):
-        delivery.fail("IDENTITY", "APK is not the expected independent ChatGPT test package/version.")
+        delivery.fail("IDENTITY", "APK is not the expected ChatGPT update package/version.")
     if not re.search(r"^native-code: 'arm64-v8a'\s*$", badging, re.M):
         delivery.fail("ABI", "APK must contain exactly the arm64-v8a native architecture.")
     if not re.search(r"^minSdkVersion:'26'$", badging, re.M):
@@ -54,9 +58,23 @@ def inspect_apk(apk, build_tools):
         "min_sdk": 26,
         "architectures": ["arm64-v8a"],
         "certificate_sha256": certificates[0],
+        "expected_upgrade_certificate_sha256": EXPECTED_UPGRADE_CERTIFICATE_SHA256,
+        "upgrade_certificate_matches": certificates[0] == EXPECTED_UPGRADE_CERTIFICATE_SHA256,
+        "previous_version_code": PREVIOUS_VERSION_CODE,
         "apk_sha256": delivery.sha256(apk),
         "apk_size": apk.stat().st_size,
     }
+
+
+def ensure_upgrade_compatible(metadata):
+    if metadata["certificate_sha256"] != EXPECTED_UPGRADE_CERTIFICATE_SHA256:
+        delivery.fail(
+            "UPGRADE_SIGNING",
+            "APK build succeeded, but its signing certificate does not match the installed version. "
+            "The original signing key is required; no Release or APK upload was created.",
+        )
+    if metadata["application_id"] != PACKAGE or metadata["version_code"] <= PREVIOUS_VERSION_CODE:
+        delivery.fail("UPGRADE_IDENTITY", "An update must keep the package name and increase versionCode.")
 
 
 def download_apk(asset, tag, output, expected):
@@ -100,11 +118,13 @@ def main():
         delivery.fail("SOURCE", "Invalid source commit.")
     metadata["source_commit"] = source_sha
     args.output.mkdir(parents=True, exist_ok=True)
+    # Keep a public diagnostic receipt even when publication is blocked by a missing original key.
+    (args.output / "apk-verification.json").write_text(json.dumps(metadata, indent=2) + "\n")
     if args.verify_only:
-        (args.output / "apk-verification.json").write_text(json.dumps(metadata, indent=2) + "\n")
         print(json.dumps(metadata, indent=2))
         return
 
+    ensure_upgrade_compatible(metadata)
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != REPO:
         delivery.fail("AUTH", "Publication runs only in this repository's GitHub Actions.")
     if os.environ.get("GITHUB_REF") != "refs/heads/custom-3.2.0" or os.environ.get("GITHUB_SHA") != source_sha:
@@ -122,7 +142,7 @@ def main():
     metadata["tag"] = tag
     metadata["actions_url"] = f"https://github.com/{REPO}/actions/runs/{run_id}"
     metadata["signing_persistence"] = "external-secret" if os.environ.get("CHATGPT_TEST_KEYSTORE") else "this-build-only"
-    name = f"rikkahub-3.2.0-chatgpt-{source_sha[:12]}-arm64.apk"
+    name = f"rikkahub-{VERSION_NAME}-{source_sha[:12]}-arm64.apk"
     apk = args.output / name
     shutil.copyfile(args.apk, apk)
     checksum = apk.with_name(apk.name + ".sha256")
@@ -131,13 +151,12 @@ def main():
     provenance.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     notes = args.output / "release-notes.txt"
     notes.write_text(
-        "RikkaHub 3.2.0 — ChatGPT 官方授权流程测试版\n\n"
+        "RikkaHub 3.2.0 — ChatGPT 真机反馈修复测试版\n\n"
         f"源码： https://github.com/{REPO}/commit/{source_sha}\n"
         f"Actions： {metadata['actions_url']}\n\n"
-        "ARM64，Android 8.0 及以上。独立安装，不覆盖正式版或旧自用版，也不会删除其数据。\n"
-        "安装后进入 ChatGPT Provider，登录并完成授权，取得套餐权限后选择模型聊天并测试客户端工具。\n"
-        "本构建已运行协议模拟测试；真实账号登录、套餐资格和真机聊天仍需用户验证。\n"
-        "签名未持久化时，不承诺后续构建能够覆盖升级。\n\n"
+        "ARM64，Android 8.0 及以上。已验证包名、原版证书和递增versionCode，可覆盖上一版ChatGPT自用测试包，保留其应用数据。\n"
+        "已保留通过真机验证的官方登录和正常聊天；本次修复仍需手机复测工具设置及搜索。\n"
+        "安装本更新不需要卸载旧版或重新配置提供商。\n\n"
         f"APK SHA-256: `{metadata['apk_sha256']}`\n"
         f"证书 SHA-256: `{metadata['certificate_sha256']}`\n",
         encoding="utf-8",
@@ -167,7 +186,7 @@ def main():
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
             summary.write(f"Verified public APK: [{apk.name}]({url})\n\n")
-            summary.write(f"Source `{source_sha}`; SHA-256 `{metadata['apk_sha256']}`; independent install.\n")
+            summary.write(f"Source `{source_sha}`; SHA-256 `{metadata['apk_sha256']}`; verified signing-compatible update.\n")
 
 
 if __name__ == "__main__":
