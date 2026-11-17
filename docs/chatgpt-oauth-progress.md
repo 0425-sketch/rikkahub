@@ -1,18 +1,26 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 本轮3.3.0更新发布（2026-11-17 UTC）
+## 最新交付：3.3.0-personal.1（2026-11-17 UTC）
 
-用户已明确授权发布新的Release。本轮已将正式tag `3.3.0` 合入自用版，应用整合提交 `895ff323`；原签名的临时产物构建 `44070125131` 已成功。现在沿用原 `chatgpt-test-apk.yml` 发布流程重新执行完整回归、两个独立签名恢复构建、Release上传及公开下载验签。
+**用户授权的Release已发布，公开下载与本地独立验签全部完成。** 构建源码 `4ac14e80bb2400802907cdb7747befeb24874bb1`，Actions `44074740868` 全部成功。应用代码整合正式tag `3.3.0`；完整变更、迁移、测试和性能记录见 [3.3.0升级报告](custom-3.3.0-upgrade.md)。
 
-继续使用原主用/备用Secrets和证书，包名 `me.rerere.rikkahub.personal`，版本 `201 / 3.3.0-personal.1`；不运行签名bootstrap，不重新配置或更换私钥。当前处于发布准备，不能提前将临时Actions产物称为已经公开下载复验的Release。完整升级与测试记录见 [3.3.0升级报告](custom-3.3.0-upgrade.md)。下方personal.2章节为已完成的历史交付，不能代替本轮验证；本节将在本轮发布和实际下载核验完成后更新。
+- [直接下载ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-4ac14e80bb24-44074740868-1/rikkahub-3.3.0-personal.1-4ac14e80bb24-arm64.apk)；[Release页面](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-4ac14e80bb24-44074740868-1)。
+- 包名 `me.rerere.rikkahub.personal`，版本 `201 / 3.3.0-personal.1`，大小 `61107629` 字节；APK SHA-256 `10241e5be888fe267b4e307165b1d197b7891fdefa1bef2d11a311428b862ca7`。
+- 固定证书仍为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`。原主用/备用Secret在两个独立runner恢复构建；没有运行bootstrap、换签名或要求用户重新配置。
+- 已实际公开下载新APK与证明文件，并对新旧实际APK执行apksigner/aapt2：同包同证书、版本200→201，符合覆盖更新身份。此前临时Actions产物下载403不再阻塞本次Release交付。
+- 本地完整JVM1,183项通过、1项缺真实外部样本跳过；Python54项通过。Release CI重新执行七模块回归、AndroidTest编译、Python门禁及双恢复发布，全部步骤成功。未在用户手机安装或执行真实账号在线流程。
+- 本地可安装文件 `/workspace/artifacts/rikkahub-3.3.0/rikkahub-3.3.0-personal.1-arm64.apk`。独立验证证据位于 `/workspace/scratch/release-44074740868/independent-delivery-verification.json` 和交付目录；后续仅文档提交不改变以上APK构建源码。
+- 继续沿用现有持久签名和自用分支 `custom-3.2.0`。下方personal.2章节是历史记录；以后恢复任务优先读本节、升级报告并核对实际Git/Release，不重复签名初始化或要求用户提供密钥。
 
-**当前状态（2026-11-17 Asia/Singapore）：personal.2固定签名更新APK已发布，实际公开下载及与personal.1覆盖身份核验完成。** 最终源码37fba983、Actions43923584665成功，990+34项测试全部通过；两个独立runner恢复原有主/备份签名构建，包名及证书不变，版本199→200。已修生成中统计待更新显示，并修复回归揭示的临时回调页面关闭竞态。全部已有授权、缓存、工具及迁移成果保留，不需要重新配置签名。最新链接、数据与证据见末尾；恢复时仍先核对本文件、Git与实际运行结果。
+## personal.2历史交付记录
+
+**历史状态（2026-11-17 Asia/Singapore）：personal.2固定签名更新APK已发布，实际公开下载及与personal.1覆盖身份核验完成。** 最终源码37fba983、Actions43923584665成功，990+34项测试全部通过；两个独立runner恢复原有主/备份签名构建，包名及证书不变，版本199→200。已修生成中统计待更新显示，并修复回归揭示的临时回调页面关闭竞态。全部已有授权、缓存、工具及迁移成果保留，不需要重新配置签名。最新链接、数据与证据见末尾；恢复时仍先核对本文件、Git与实际运行结果。
 
 **缓存专项基准已保留：** 此前已调查官方 DevKit issue 9 与 OpenClaw issue 197532，完成下划线 HTTP 头 `session_id` 的稳定会话适配；旧连字符头 `session-id` 与 JSON `prompt_cache_key` 不得混用。后续只根据新反馈继续，不重复已完成调查或将第三方命中率当作本应用数据。
 
 **最新真机反馈已处理：** 生成中“上下文未知/缓存未知”来自UI未区分等待本轮用量与终态缺失；personal.2已区分待更新/未知/已报告，未用上一轮数字或估算值冒充本轮统计。显示修复已自动化验证并包含在实际下载的新APK中，手机安装后的显示由用户正常使用确认。
 
-## 新窗口交接入口（2026-11-17，任务已结束）
+## personal.2历史交接入口（2026-11-17）
 
 - 用户已明确结束本轮，下一次问题将在新窗口提出。当前没有待执行的工程任务或待用户配置的权限；以下历史章节中的“正在”“待验证”“等待配置”是当时记录，均以顶部及末尾最终结果为准。不要自动重启调查、构建或签名恢复。
 - 唯一主记录就是本文件。恢复时先读此入口和末尾交付章节，再核对实际Git状态/分支及相关Actions、Release；只根据新问题继续，不要求用户重述全部需求。仓库0425-sketch/rikkahub，开发分支custom-3.2.0，不改master。交接前已推送HEAD为2bb2ef66f649fa74121afb97fce7de114b313315；此交接文档提交之后，以git log和远端为准。
