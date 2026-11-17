@@ -317,17 +317,17 @@ class GitHubSecretClientTest(unittest.TestCase):
 
 
 class SetupTokenRetirementTest(unittest.TestCase):
-    def evidence(self, root):
+    def evidence(self, root, version_name="3.2.0-personal.1"):
         identity = {"schema": 1, "application_id": signing.PACKAGE, "certificate_sha256": "a" * 64}
         env = {"GITHUB_SHA": "b" * 40, "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2", signing.SETUP_TOKEN_NAME: "synthetic-one-time-token"}
-        tag = "custom-3.2.0-personal-" + "b" * 12 + "-123-2"
+        tag = f"custom-{version_name.split('-personal.')[0]}-personal-" + "b" * 12 + "-123-2"
         delivery = {
             "application_id": signing.PACKAGE, "certificate_sha256": "a" * 64,
             "expected_certificate_sha256": "a" * 64, "source_commit": "b" * 40,
             "tag": tag, "actions_url": f"https://github.com/{signing.REPO}/actions/runs/123",
             "release_url": f"https://github.com/{signing.REPO}/releases/tag/{tag}",
-            "apk_url": f"https://github.com/{signing.REPO}/releases/download/{tag}/rikkahub-3.2.0-personal.1-{'b' * 12}-arm64.apk",
-            "version_name": "3.2.0-personal.1", "apk_sha256": "c" * 64, "apk_size": 123456,
+            "apk_url": f"https://github.com/{signing.REPO}/releases/download/{tag}/rikkahub-{version_name}-{'b' * 12}-arm64.apk",
+            "version_name": version_name, "apk_sha256": "c" * 64, "apk_size": 123456,
             "signing_persistence": "durable-primary-and-backup-secrets",
             "public_download_verified": True, "two_clean_restorations_verified": True, "fixed_certificate_matches": True,
         }
@@ -342,6 +342,41 @@ class SetupTokenRetirementTest(unittest.TestCase):
         verification.write_text(json.dumps(delivery))
         (root / "signing-restoration-verification.json").write_text(json.dumps(restoration))
         return identity, env, verification, delivery, restoration
+
+    def test_previous_and_current_release_tags_allow_idempotent_no_token_cleanup(self):
+        for version in ("3.2.0-personal.1", "3.2.0-personal.2", "3.3.0-personal.1"):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as folder, contextlib.redirect_stdout(io.StringIO()):
+                identity, env, verification, _, _ = self.evidence(Path(folder), version)
+                api = mock.Mock()
+                self.assertEqual("absent", signing.retire_setup_token(
+                    identity, verification, {**env, signing.SETUP_TOKEN_NAME: ""}, api,
+                ))
+                api.metadata.assert_not_called()
+                api.delete.assert_not_called()
+                api.put.assert_not_called()
+
+    def test_current_release_rejects_wrong_family_source_run_and_unapproved_versions(self):
+        changes = (
+            {"version_name": "3.2.0-personal.2"},
+            {"version_name": "3.4.0-personal.1"},
+            {"version_name": "3.3.0-personal.0"},
+            {"version_name": "3.3.0-personal.1/other"},
+            {"tag": "custom-3.2.0-personal-" + "b" * 12 + "-123-2"},
+            {"tag": "custom-3.3.0-personal-" + "d" * 12 + "-123-2"},
+            {"tag": "custom-3.3.0-personal-" + "b" * 12 + "-999-2"},
+            {"tag": "custom-3.3.0-personal-" + "b" * 12 + "-123-3"},
+        )
+        for change in changes:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
+                identity, env, verification, delivery, _ = self.evidence(Path(folder), "3.3.0-personal.1")
+                delivery.update(change)
+                verification.write_text(json.dumps(delivery))
+                api = mock.Mock()
+                with self.assertRaisesRegex(signing.SigningError, "RETIREMENT_EVIDENCE"):
+                    signing.retire_setup_token(identity, verification, env, api)
+                api.metadata.assert_not_called()
+                api.delete.assert_not_called()
+                api.put.assert_not_called()
 
     def test_successful_delivery_retires_only_setup_secret_and_empty_or_missing_is_idempotent(self):
         with tempfile.TemporaryDirectory() as folder, contextlib.redirect_stdout(io.StringIO()):

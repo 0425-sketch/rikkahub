@@ -64,8 +64,6 @@ jobs:
         python3 -m venv "$RUNNER_TEMP/personal-signing-python"
         "$RUNNER_TEMP/personal-signing-python/bin/pip" install --disable-pip-version-check PyNaCl==1.6.0
         echo "$RUNNER_TEMP/personal-signing-python/bin" >> "$GITHUB_PATH"
-    - name: Check signing, publication and database guards
-      run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/tests -p 'test_*.py'
     - name: Set up pnpm
       uses: pnpm/action-setup@v4
       with:
@@ -107,7 +105,12 @@ jobs:
         ./gradlew --no-daemon --no-configuration-cache --max-workers=2 \
           '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
           -Pkotlin.compiler.execution.strategy=in-process \
-          :oauth:testDebugUnitTest :ai:testDebugUnitTest :search:testDebugUnitTest :app:testGithubDebugUnitTest
+          --rerun-tasks \
+          :oauth:testDebugUnitTest :ai:testDebugUnitTest :common:testDebugUnitTest \
+          :search:testDebugUnitTest :speech:testDebugUnitTest :workspace:testDebugUnitTest \
+          :app:testGithubDebugUnitTest :app:compileGithubDebugAndroidTestKotlin
+    - name: Check signing, publication and database guards
+      run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/tests -p 'test_*.py'
     - name: Retain public test reports
       if: always()
       uses: actions/upload-artifact@v4
@@ -118,6 +121,9 @@ jobs:
           oauth/build/test-results/testDebugUnitTest/*.xml
           ai/build/test-results/testDebugUnitTest/*.xml
           search/build/test-results/testDebugUnitTest/*.xml
+          common/build/test-results/testDebugUnitTest/*.xml
+          speech/build/test-results/testDebugUnitTest/*.xml
+          workspace/build/test-results/testDebugUnitTest/*.xml
           app/build/test-results/testGithubDebugUnitTest/*.xml
   signed-build:
     name: Restore and build (${{ matrix.source }})

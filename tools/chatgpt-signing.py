@@ -370,7 +370,11 @@ def verify_retirement_evidence(identity, verification, environ):
     attempt = environ.get("GITHUB_RUN_ATTEMPT", "")
     if not re.fullmatch(r"[a-f0-9]{40}", source) or not run_id.isdecimal() or not attempt.isdecimal():
         fail("RETIREMENT_EVIDENCE", "The current Actions source or run identity is unavailable.")
-    tag = f"custom-3.2.0-personal-{source[:12]}-{run_id}-{attempt}"
+    version_name = delivery.get("version_name")
+    version_match = re.fullmatch(r"(3\.[23]\.0)-personal\.[1-9][0-9]*", version_name) if isinstance(version_name, str) else None
+    if version_match is None:
+        fail("RETIREMENT_EVIDENCE", "The delivery proof does not identify a supported personal release version.")
+    tag = f"custom-{version_match.group(1)}-personal-{source[:12]}-{run_id}-{attempt}"
     release_url = f"https://github.com/{REPO}/releases/tag/{tag}"
     expected = {
         "application_id": PACKAGE, "certificate_sha256": certificate,
@@ -381,7 +385,6 @@ def verify_retirement_evidence(identity, verification, environ):
     if any(delivery.get(key) != value for key, value in expected.items()) or \
             any(delivery.get(flag) is not True for flag in ("public_download_verified", "two_clean_restorations_verified", "fixed_certificate_matches")):
         fail("RETIREMENT_EVIDENCE", "The completed delivery does not match this pinned signer, source and Actions run.")
-    version_name = delivery.get("version_name")
     expected_url = f"https://github.com/{REPO}/releases/download/{tag}/rikkahub-{version_name}-{source[:12]}-arm64.apk"
     if not isinstance(version_name, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", version_name) or \
             delivery.get("apk_url") != expected_url or \
