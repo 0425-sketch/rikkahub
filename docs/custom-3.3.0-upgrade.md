@@ -1,6 +1,6 @@
 # 自用 3.3.0 升级与诊断优化
 
-> 本文记录本次代码、测试与构建证据。**代码、回归和未签名APK构建已完成**：JVM实际通过1,183项，另1项缺外部真实样本跳过；数据库Room及备份13项已通过。**可覆盖安装的签名交付仍阻塞**。当前环境没有固定签名私钥，不能将 unsigned 产物称为可覆盖安装包。历史版本的测试与 APK 不计作本次交付。
+> 本文记录本次代码、测试与构建证据。**代码、回归和原固定签名APK构建已完成**：JVM实际通过1,183项，另1项缺外部真实样本跳过；数据库Room及备份13项已通过。主用、备用签名在独立Actions runner上均恢复、构建、验签成功。**签名APK通过Actions产物交付；当前环境下载被代理403阻止，本地下载后复验未完成。**历史版本的测试与 APK 不计作本次交付。
 
 ## 基线与整合目标
 
@@ -9,9 +9,9 @@
 - 上游：`rikkahub/rikkahub` 的正式 tag **`3.3.0`**，不是 `v3.3.0` 或最新 master。
 - tag / release commit：`eb33917e483aae1427db9cb10232642a640d2986`。
 - 正式发布时间：`2026-11-16T15:36:03Z`。
-- 最终自用源码 commit：本文所在的本地合并提交；完整SHA记录于 `/workspace/artifacts/rikkahub-3.3.0/delivery.json` 及本次会话交付报告。源码测试后只更新此报告，不再修改生产代码。
+- 应用整合 commit：`895ff3239a43005107ae0677eff5937e56a8b755`；签名构建 commit：`91f7c76b8f8f07d1b49e214cbc7aefff4c3a4c2c`。后者仅增加已有签名的产物构建入口及对应权限测试，没有修改应用生产代码。其后的提交仅更新本交付报告。
 
-开始时工作区无未提交改动，检出的是 `work` 分支；核对远端后切换到上述自用分支再实施整合。没有 reset 或覆盖用户工作，没有推送、公开发布、改仓库可见性或向上游提交 PR。
+开始时工作区无未提交改动，检出的是 `work` 分支；核对远端后切换到上述自用分支再实施整合。没有 reset 或覆盖用户工作。用户随后明确授权临时分支推送与签名构建；已推送 `build/personal-3.3.0`，远端 `custom-3.2.0` 保持原状。未创建Release、改仓库可见性或向上游提交PR。
 
 ## 五项改动
 
@@ -79,7 +79,7 @@ OAuth 注册、授权、换码、刷新和撤销的敏感内容优先不进入�
 | --- | --- |
 | SQLite 主机迁移及 staging / 用量语义 | **14 项通过**；`/workspace/scratch/db-host-tests.log`。包括原版32、自用33、上游33/34直接升级与staging、全新安装结构一致及失败回滚。 |
 | Room 实际迁移 / staging | **13项通过**：直接升级/新装5项、生产备份stage/publish/apply及失败回滚8项。Robolectric4.18/API35/Native SQLite实际执行生产Room校验和BackupManager；仅替换Requery JNI/libsimple适配层。原始XML：`/workspace/scratch/db-room-results/`，最终全套内再次通过。 |
-| 签名/发布 Python 门禁 | **33项通过**，包含持久签名保管、unsigned拒绝、旧版拒绝、版本跨文件一致及固定证书/双恢复约束。PyNaCl1.6.0，全部使用合成测试材料，无远端写入；`/workspace/scratch/signing-python-tests.log`。 |
+| 签名/发布 Python 门禁 | **38项通过**，最终实际重跑5.760秒；包含原33项及5项CLI分支权限回归，临时分支只允许恢复已有签名。PyNaCl1.6.0，使用合成测试材料，无测试产生的远端写入；`/workspace/scratch/signing-final-tests.log`。 |
 | 无密钥默认构建门禁 | **按预期失败**，`verifyPersonalSigning` 明确拒绝；`/workspace/scratch/signing-guard-locked.log`。 |
 | 显式 unsigned 门禁 | **通过**，`-PpersonalUnsigned=true` 后该门禁实际执行成功；`/workspace/scratch/signing-guard-unsigned.log`。此结果不是 APK 构建成功。 |
 | 流式解析器前后性能对照 | **已实际运行**；见下一节及 `/workspace/scratch/stream-benchmark.json`。 |
@@ -145,36 +145,28 @@ python3 tools/benchmark-response-decoder.py \
 
 2MB图片场景旧完整采集线程CPU20.842ms/分配48,234,111B；新完整0.025ms/15,693B，**这属于明确预算超限后停止指纹采集，不是等工作量速度比较**。原始图片和真实请求不截断，导出标明不完整。关闭模式测得额外分配0B；轻量模式不访问图片内容。原始结果：`/workspace/scratch/cache-benchmark-isolated.xml`、`.log`。
 
-## APK与固定签名交付边界
+## APK与固定签名交付
 
-固定公钥身份仍为 [chatgpt-personal-signing.json](chatgpt-personal-signing.json)：
-
-```text
-applicationId: me.rerere.rikkahub.personal
-certificate SHA-256: 882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd
-```
-
-原有私钥由GitHub Actions的加密主用/恢复副本保存，本次本地环境没有可用私钥。没有生成替代签名或修改公钥pin。默认personal APK生产必须有既有签名；显式unsigned仅用于本地构建核验，不能安装或覆盖原应用。
-
-```bash
-source /workspace/.setup/env.sh
-unset ANDROID_SDK_HOME
-./gradlew -PpersonalUnsigned=true :app:assembleGithubDebug
-```
-
-ARM64交付产物：`/workspace/artifacts/rikkahub-3.3.0/rikkahub-3.3.0-personal.1-arm64-UNSIGNED.apk`（61,103,533字节）。同目录有SHA-256文件、`apk-verification.json`及`delivery.json`。
+原私钥保存在GitHub Actions加密Secrets `RIKKAHUB_PERSONAL_SIGNING`、`RIKKAHUB_PERSONAL_SIGNING_BACKUP`。本次从两份已有材料独立恢复，没有生成或替换应用签名，没有导出私钥到本地或产物。
 
 ```text
-SHA-256: 0d61c2f7d3ba4fd77ff6ac852746ce8bb05cad082ec39d3fcbaa4fd7e8b30970
 applicationId: me.rerere.rikkahub.personal
 versionCode: 201
 versionName: 3.3.0-personal.1
 ABI: arm64-v8a
-apksigner: exit 1 / DOES NOT VERIFY / Missing META-INF/MANIFEST.MF
+minSdk: 26
+certificate SHA-256: 882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd
+signed source commit: 91f7c76b8f8f07d1b49e214cbc7aefff4c3a4c2c
 ```
 
-这是明确的**unsigned验证包，不能安装或覆盖原应用**。原固定证书pin未改，但本次产物没有签名，不能报告与已安装版签名一致。没有生成替代应用签名；只有恢复既有私钥并验证实际证书一致后，才能交付覆盖升级APK。通用及x86_64验证包保留在 `app/build/outputs/apk/github/debug/`，也均未签名。
+[实际构建运行 44070125131](https://github.com/0425-sketch/rikkahub/actions/runs/44070125131)整体耗时7分25秒，两个独立runner均完成恢复、APK构建、`apksigner`验签、`aapt2`包名/版本/ABI校验、实际证书匹配及临时私钥清理。主用job `133993920515`，备用job `133993920489`。工作流只有`contents: read`，不创建Release。
 
-现有Actions工作流包含公开发布步骤，本次未直接触发。远端推送或发布需要本会话相应明确授权；不因本次本地代码/测试/构建授权自动扩大范围。
+- [主用签名APK产物ZIP](https://github.com/0425-sketch/rikkahub/actions/runs/44070125131/artifacts/14323705188)：解压取 `candidate.apk`，同包含公开验签元数据和恢复证明。
+- [备用签名构建产物ZIP](https://github.com/0425-sketch/rikkahub/actions/runs/44070125131/artifacts/14321939200)：独立构建并通过同样的校验。
+- 产物保留14天。GitHub记录的主用ZIP SHA-256为 `b7aaaff70ca5069364b7fd8f75ebca4b125aa94e490c8048e55be8fbe88889be`；备用为 `2fe445097ebc46e8dde5390ded4af3a17debd48b3e490fc3f355bef98cacb190`。这是**ZIP摘要，不是APK摘要**。
 
-仓库 `artifacts/3.2.0/app-github-arm64-v8a-debug.apk` 已检查为旧 `.debug` 包、版本196及Android Debug签名，并非已安装personal版，不能用作本次产物或固定签名覆盖基准。历史签名恢复与交付说明见 [ChatGPT OAuth进度](chatgpt-oauth-progress.md)，其中旧测试和旧APK仍不计作本次验证。
+本次还重新下载了真正的 `3.2.0-personal.2` 旧APK并在本地执行验签：包名相同、versionCode=200、证书与上面的固定证书完全一致；SHA-256=`0b8b59d3d59d3c48995f6a2095a2a25bb00fa6f83d08dcb7858e76072f9adef3`。新APK满足相同包名、相同签名和递增版本号的覆盖条件。未在用户设备实际安装，也未运行真实账号在线授权流程。
+
+当前云环境通过GitHub CLI和标准API下载新Actions产物时，代理对官方存储主机 `productionresultssa15.blob.core.windows.net` 的CONNECT请求返回403。因此没有把“构建机实际验签成功”写成本地下载后复验成功，没有声称已取得新APK的本地摘要。下载链接直接指向上述Actions产物；未为绕过下载阻塞公开发布。
+
+本地 `/workspace/artifacts/rikkahub-3.3.0/` 保存交付报告、运行/API证据、签名测试日志及旧版实际APK核验结果。先前的 `rikkahub-3.3.0-personal.1-arm64-UNSIGNED.apk` 仍仅为未签名验证包，不能用它覆盖安装；它的SHA-256是 `0d61c2f7d3ba4fd77ff6ac852746ce8bb05cad082ec39d3fcbaa4fd7e8b30970`。
