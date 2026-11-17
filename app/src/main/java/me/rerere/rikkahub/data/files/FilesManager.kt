@@ -133,12 +133,7 @@ class FilesManager(
                 )
                 newUris.add(file.toUri())
             }.onFailure {
-                it.printStackTrace()
-                Log.e(TAG, "createChatFilesByContents: Failed to save file from $uri", it)
-                Logging.log(
-                    TAG,
-                    "createChatFilesByContents: Failed to save file from $uri ${it.message} | ${it.stackTraceToString()}"
-                )
+                Logging.diagnostic(TAG, it) { "createChatFilesByContents: Failed to save file from $uri" }
             }
         }
         return newUris
@@ -484,11 +479,7 @@ class FilesManager(
                     )
                 )
             }.onFailure {
-                Log.e(TAG, "trackManagedFile: Failed to track file ${file.absolutePath}", it)
-                Logging.log(
-                    TAG,
-                    "trackManagedFile: Failed to track file ${file.absolutePath} ${it.message} | ${it.stackTraceToString()}"
-                )
+                Logging.diagnostic(TAG, it) { "trackManagedFile: Failed to track file ${file.absolutePath}" }
             }
         }
     }

@@ -1,6 +1,6 @@
 package me.rerere.ai.provider.providers.google
 
-import android.util.Log
+import me.rerere.common.android.Logging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -45,11 +45,11 @@ import me.rerere.ai.ui.UIMessageAnnotation
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.metadataAs
 import me.rerere.ai.ui.toMetadata
-import me.rerere.ai.util.KeyRoulette
 import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.configureSessionHeaders
 import me.rerere.ai.util.encodeBase64
 import me.rerere.ai.util.json
+import me.rerere.ai.util.logRequestBody
 import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.mergeCustomHeaders
 import me.rerere.ai.util.parseErrorDetail
@@ -71,15 +71,30 @@ import kotlin.time.Clock
 
 private const val TAG = "InteractionsAPI"
 
+// Vertex 上的 Interactions API 只开放 global 和 us/eu 多区域，不支持 us-central1 这类单区域
+internal val VERTEX_INTERACTIONS_LOCATIONS = setOf("global", "us", "eu")
+
 /**
- * Gemini Interactions API (`POST /v1beta/interactions`)。
+ * Gemini API 走 `{baseUrl}/interactions`；
+ * Vertex 走 `/v1/projects/{project}/locations/{location}/interactions`，us/eu 多区域使用各自的 rep 域名。
+ */
+internal fun ProviderSetting.Google.interactionsUrl(): String {
+    if (!vertexAI) return "$baseUrl/interactions"
+    val host = if (location == "global") "aiplatform.googleapis.com" else "aiplatform.$location.rep.googleapis.com"
+    return "https://$host/v1/projects/$projectId/locations/$location/interactions"
+}
+
+/**
+ * Gemini Interactions API (`POST /v1beta/interactions`)，也用于 Vertex AI 服务账号。
  *
  * 对话历史由客户端管理（分支、编辑、重新生成），因此始终使用无状态模式：`store=false`，
  * 每次请求在 `input` 中回传完整的 step 列表，而不是依赖 `previous_interaction_id`。
+ *
+ * 鉴权（API key 或服务账号 access token）由 [authorize] 注入。
  */
 internal class InteractionsAPI(
     private val client: OkHttpClient,
-    private val keyRoulette: KeyRoulette = KeyRoulette.default(),
+    private val authorize: suspend (ProviderSetting.Google, Request) -> Request = { _, request -> request },
 ) {
     suspend fun generateText(
         providerSetting: ProviderSetting.Google,
@@ -107,14 +122,15 @@ internal class InteractionsAPI(
         val requestBody = buildRequestBody(messages, params, stream = true)
         val request = buildRequest(providerSetting, params, requestBody)
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        val diagnostic = Logging.requestScope(request)
+        logRequestBody(diagnostic, TAG, "streamText") { json.encodeToString(requestBody) }
 
         val decoder = InteractionsStreamDecoder(fallbackModel = params.model.modelId)
 
         fun sendChunks(chunks: Iterable<StreamChunk>) {
             chunks.forEach { chunk ->
                 trySend(chunk).onFailure { e ->
-                    Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                    diagnostic.diagnostic(TAG) { "onEvent: chunk dropped (${e?.message})" }
                 }
             }
         }
@@ -126,13 +142,13 @@ internal class InteractionsAPI(
                 type: String?,
                 data: String
             ) {
-                Log.d(TAG, "onEvent: $id/$type $data")
+                diagnostic.diagnostic(TAG) { "onEvent: $id/$type $data" }
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
                     if (result.completed) close()
                 } catch (e: Throwable) {
-                    Log.e(TAG, "Failed to parse stream event: $data", e)
+                    diagnostic.diagnostic(TAG, e) { "Failed to parse stream event: $data" }
                     close(e)
                 }
             }
@@ -148,7 +164,7 @@ internal class InteractionsAPI(
                         exception = Exception("Unknown error: ${response.code}")
                     }
                 } catch (e: Throwable) {
-                    Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
+                    diagnostic.diagnostic(TAG) { "onFailure: failed to parse from $bodyRaw" }
                 } finally {
                     close(exception ?: Exception("Stream failed"))
                 }
@@ -168,20 +184,20 @@ internal class InteractionsAPI(
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
     }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
 
-    private fun buildRequest(
+    private suspend fun buildRequest(
         providerSetting: ProviderSetting.Google,
         params: TextGenerationParams,
         requestBody: JsonObject,
     ): Request {
-        val url = "${providerSetting.baseUrl}/interactions"
-        return Request.Builder()
+        val url = providerSetting.interactionsUrl()
+        val request = Request.Builder()
             .url(url)
             .headers(providerSetting.mergeCustomHeaders(params.customHeaders))
             .configureSessionHeaders(url, params.sessionId)
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
-            .addHeader("x-goog-api-key", keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString()))
             .configureReferHeaders(providerSetting.baseUrl)
             .build()
+        return authorize(providerSetting, request)
     }
 
     internal fun buildRequestBody(

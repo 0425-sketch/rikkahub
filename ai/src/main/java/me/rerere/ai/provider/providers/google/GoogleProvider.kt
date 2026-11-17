@@ -1,7 +1,7 @@
 package me.rerere.ai.provider.providers.google
 
+import me.rerere.common.android.Logging
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -61,6 +61,7 @@ import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.configureSessionHeaders
 import me.rerere.ai.util.encodeBase64
 import me.rerere.ai.util.json
+import me.rerere.ai.util.logRequestBody
 import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.mergeCustomHeaders
 import me.rerere.ai.util.removeElements
@@ -88,15 +89,16 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
     private val serviceAccountTokenProvider by lazy {
         ServiceAccountTokenProvider(client)
     }
-    private val interactionsAPI = InteractionsAPI(client = client, keyRoulette = keyRoulette)
+    private val interactionsAPI = InteractionsAPI(client = client, authorize = ::transformRequest)
 
     override suspend fun getQuota(providerSetting: ProviderSetting.Google): ProviderQuota? =
         client.runQuotaQuery(providerSetting) {
             keyRoulette.next(providerSetting.apiKey, providerSetting.id.toString())
         }
 
-    // Interactions API 目前只有 Gemini Developer API 提供，Vertex AI 仍走 generateContent
-    private fun ProviderSetting.Google.usesInteractionsApi() = useInteractionsApi && !vertexAI
+    // Vertex AI 只有服务账号走 Interactions，且区域须为 global/us/eu，否则仍走 generateContent
+    private fun ProviderSetting.Google.usesInteractionsApi() = useInteractionsApi &&
+        (!vertexAI || (useServiceAccount && location in VERTEX_INTERACTIONS_LOCATIONS))
 
     private fun buildUrl(providerSetting: ProviderSetting.Google, path: String): HttpUrl {
         return if (!providerSetting.vertexAI) {
@@ -145,10 +147,11 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                     .get()
                     .build()
             )
+            val diagnostic = Logging.requestScope(request)
             val response = client.newCall(request).await()
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: error("empty body")
-                Log.d(TAG, "listModels: $body")
+                diagnostic.diagnostic(TAG) { "listModels: $body" }
                 val bodyObject = json.parseToJsonElement(body).jsonObject
                 val models = bodyObject["models"]?.jsonArray ?: return@withContext emptyList()
 
@@ -265,7 +268,8 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 .build()
         )
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        val diagnostic = Logging.requestScope(request)
+        logRequestBody(diagnostic, TAG, "streamText") { json.encodeToString(requestBody) }
 
         val responseId = Uuid.random().toString()
         val decoder = GoogleStreamDecoder(responseId, params.model.modelId)
@@ -273,7 +277,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         fun sendChunks(chunks: Iterable<StreamChunk>) {
             chunks.forEach { chunk ->
                 trySend(chunk).onFailure { e ->
-                    Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                    diagnostic.diagnostic(TAG) { "onEvent: chunk dropped (${e?.message})" }
                 }
             }
         }
@@ -285,14 +289,14 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 type: String?,
                 data: String
             ) {
-                Log.i(TAG, "onEvent: $data")
+                diagnostic.diagnostic(TAG) { "onEvent: $data" }
 
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
                     if (result.completed) close()
                 } catch (e: Throwable) {
-                    Log.e(TAG, "Failed to parse stream event: $data", e)
+                    diagnostic.diagnostic(TAG, e) { "Failed to parse stream event: $data" }
                     close(e)
                 }
             }
@@ -304,15 +308,15 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             ) {
                 var exception = t
 
-                t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.message}")
+                diagnostic.diagnostic(TAG, t) { "Provider operation failed" }
+                diagnostic.diagnostic(TAG) { ("[onFailure] 发生错误: ${t?.message}").toString() }
 
                 try {
                     if (t == null && response != null) {
                         val bodyStr = response.body.stringSafe()
                         if (!bodyStr.isNullOrEmpty()) {
                             val bodyElement = json.parseToJsonElement(bodyStr)
-                            println(bodyElement)
+                            diagnostic.diagnostic(TAG) { (bodyElement).toString() }
                             if (bodyElement is JsonObject) {
                                 exception = Exception(
                                     bodyElement["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content
@@ -324,7 +328,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                         }
                     }
                 } catch (e: Throwable) {
-                    e.printStackTrace()
+                    diagnostic.diagnostic(TAG, e) { "Provider operation failed" }
                     exception = e
                 } finally {
                     close(exception ?: Exception("Stream failed"))
@@ -332,7 +336,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             }
 
             override fun onClosed(eventSource: EventSource) {
-                println("[onClosed] 连接已关闭")
+                diagnostic.diagnostic(TAG) { ("[onClosed] 连接已关闭").toString() }
                 sendChunks(decoder.onClosed())
                 close()
             }
@@ -341,7 +345,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         val eventSource = client.newEventSource(request, listener)
 
         awaitClose {
-            println("[awaitClose] 关闭eventSource")
+            diagnostic.diagnostic(TAG) { ("[awaitClose] 关闭eventSource").toString() }
             eventSource.cancel()
         }
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
@@ -532,7 +536,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         val parts = parseMessageParts(content["parts"]?.jsonArray)
 
         val groundingMetadata = message["groundingMetadata"]?.jsonObject
-        Log.i(TAG, "parseMessage: $groundingMetadata")
+        Logging.diagnostic(TAG) { "Parsed message grounding metadata" }
         val annotations = parseSearchGroundingMetadata(groundingMetadata)
 
         return UIMessage(
@@ -554,13 +558,27 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 url = uri
             )
         }
-        Log.i(TAG, "parseSearchGroundingMetadata: $chunks")
+        Logging.diagnostic(TAG) { "Parsed search grounding metadata" }
         return chunks
     }
 
     private fun parseMessageParts(parts: JsonArray?): List<UIMessagePart> = buildList {
         parts.orEmpty().forEachIndexed { index, element ->
-            val part = parseMessagePart(element.jsonObject, index)
+            val part = parseMessagePart(element.jsonObject, index) ?: return@forEachIndexed
+            if (part is UIMessagePart.Text && part.text.isEmpty() && part.metadata != null) {
+                // 不带文本的签名 part：挂到前一个还没有签名的文本/思考 part 上，否则单独保留
+                val previous = lastOrNull()
+                when {
+                    previous is UIMessagePart.Text && previous.metadata == null ->
+                        set(lastIndex, previous.copy(metadata = part.metadata))
+
+                    previous is UIMessagePart.Reasoning && previous.metadata == null ->
+                        set(lastIndex, previous.copy(metadata = part.metadata))
+
+                    else -> add(part)
+                }
+                return@forEachIndexed
+            }
             if (part !is UIMessagePart.ServerTool) {
                 add(part)
                 return@forEachIndexed
@@ -586,7 +604,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
     }
 
-    private fun parseMessagePart(jsonObject: JsonObject, index: Int): UIMessagePart {
+    private fun parseMessagePart(jsonObject: JsonObject, index: Int): UIMessagePart? {
         return when {
             jsonObject.containsKey("text") -> {
                 val thought = jsonObject["thought"]?.jsonPrimitive?.booleanOrNull ?: false
@@ -674,7 +692,14 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 )
             }
 
-            else -> error("unknown message part type: $jsonObject")
+            // Gemini 可能单独下发只含 thoughtSignature 的 part
+            jsonObject.containsKey("thoughtSignature") -> UIMessagePart.Text(
+                text = "",
+                metadata = jsonObject.toGoogleThoughtMetadata(),
+            )
+
+            // 未知 part 直接跳过，避免整次请求失败
+            else -> null
         }
     }
 

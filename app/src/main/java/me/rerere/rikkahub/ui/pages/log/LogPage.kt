@@ -30,6 +30,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.switchItem
+import org.koin.compose.koinInject
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,7 +64,9 @@ import java.util.Locale
 @Composable
 fun LogPage() {
     var logs by remember { mutableStateOf(Logging.getRecentLogs()) }
-    var requestLoggingEnabled by remember { mutableStateOf(Logging.isRequestLoggingEnabled()) }
+    val settingsStore = koinInject<SettingsStore>()
+    val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -86,10 +93,13 @@ fun LogPage() {
     ) { contentPadding ->
         UnifiedLogList(
             logs = logs,
-            requestLoggingEnabled = requestLoggingEnabled,
+            requestLoggingEnabled = settings.requestLoggingEnabled,
             onRequestLoggingChange = {
-                requestLoggingEnabled = it
-                Logging.setRequestLoggingEnabled(it)
+                val enabled = it
+                scope.launch {
+                    settingsStore.update { current -> current.copy(requestLoggingEnabled = enabled) }
+                    logs = Logging.getRecentLogs()
+                }
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -152,33 +162,18 @@ private fun RequestLoggingSwitchCard(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CustomColors.cardColorsOnSurfaceContainer,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.log_page_record_requests),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stringResource(R.string.log_page_record_requests_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = enabled,
-                onCheckedChange = onEnabledChange
-            )
-        }
+    CardGroup {
+        switchItem(
+            checked = enabled,
+            onCheckedChange = onEnabledChange,
+            headlineContent = { Text(stringResource(R.string.log_page_record_requests)) },
+            supportingContent = {
+                Column {
+                    Text(stringResource(if (enabled) R.string.diagnostics_enabled_redacted else R.string.diagnostics_off))
+                    Text(stringResource(R.string.log_page_record_requests_desc))
+                }
+            },
+        )
     }
 }
 

@@ -144,7 +144,7 @@ class MemoryConsolidator(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logging.log(TAG, "consolidate $memoryId: $e")
+            Logging.diagnostic(TAG, e) { "Memory consolidation failed for $memoryId" }
             throw e
         }
     }
@@ -261,7 +261,7 @@ class MemoryConsolidator(
         consolidationDao.upsert(MemoryConsolidationEntity(conversationId.toString(), consolidatedAt))
     }.onFailure {
         // 对话在整理期间被删掉时外键约束会拒绝写入
-        Logging.log(TAG, "advance $conversationId: $it")
+        Logging.diagnostic(TAG, it) { "Memory consolidation progress failed for $conversationId" }
     }.isSuccess
 }
 

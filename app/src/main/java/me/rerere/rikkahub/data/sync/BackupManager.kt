@@ -34,12 +34,20 @@ import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 /** Shared archive format and restore lifecycle for local, WebDAV and S3 backups. */
-class BackupManager(
+class BackupManager internal constructor(
     private val context: Context,
     private val database: AppDatabase,
     private val settingsStore: SettingsStore,
     private val json: Json,
+    private val createDatabase: (Context, String) -> AppDatabase,
+    private val normalizeDatabase: (Context, File) -> Unit,
 ) {
+    constructor(context: Context, database: AppDatabase, settingsStore: SettingsStore, json: Json) : this(
+        context, database, settingsStore, json,
+        { databaseContext, name -> AppDatabaseFactory.create(databaseContext, name) },
+        DatabaseBackup::normalize,
+    )
+
     private val restoreMutex = Mutex()
 
     suspend fun createBackup(includeDatabase: Boolean, includeFiles: Boolean): File = withContext(Dispatchers.IO) {
@@ -130,9 +138,9 @@ class BackupManager(
                         restoredPaths = seen.filterTo(mutableSetOf()) { it.substringBefore('/') in ATTACHMENT_FOLDERS },
                     )
                     if (stagedDatabase.exists()) {
-                        DatabaseBackup.normalize(context, stagedDatabase)
+                        normalizeDatabase(context, stagedDatabase)
                         // Reject unsupported schemas before publishing; run supported old migrations on the copy.
-                        val room = AppDatabaseFactory.create(context, stagedDatabase.absolutePath)
+                        val room = createDatabase(context, stagedDatabase.absolutePath)
                         try {
                             pathRemapper.stagedDatabase(room.openHelper.writableDatabase)
                             DatabaseBackup.checkpoint(room.openHelper.writableDatabase)

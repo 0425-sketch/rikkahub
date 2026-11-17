@@ -9,6 +9,7 @@ android {
 
 dependencies {
     api(libs.okhttp)
+    implementation(libs.okhttp.logging)
 
     implementation(libs.androidx.browser)
     implementation(libs.androidx.core.ktx)

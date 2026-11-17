@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
+import me.rerere.rikkahub.data.db.migrations.HistoricalDatabaseFixture
 import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -166,6 +167,47 @@ class BackupManagerTest {
             failed = true
         }
         assertTrue(failed)
+        assertFalse(File(context.noBackupFilesDir, "backup-restore/pending").exists())
+        assertEquals("live", probe(liveDatabase))
+    }
+
+    @Test fun original32BackupIsValidatedAndMigratedBeforePublishing() = restoreHistorical(HistoricalDatabaseFixture.ORIGINAL_32)
+
+    @Test fun personal33BackupPreservesExplicitZeroAndUnknownUsage() = restoreHistorical(HistoricalDatabaseFixture.PERSONAL_33)
+
+    @Test fun upstream33BackupIsValidatedAndMigratedBeforePublishing() = restoreHistorical(HistoricalDatabaseFixture.UPSTREAM_33)
+
+    @Test fun upstream34BackupPreservesWorkspaceMounts() = restoreHistorical(HistoricalDatabaseFixture.UPSTREAM_34)
+
+    private fun restoreHistorical(fixture: HistoricalDatabaseFixture) = runBlocking {
+        val source = File(directory, "historical-source")
+        fixture.create(context, source)
+        val originalBytes = source.readBytes()
+        val archive = File(directory, "historical.zip")
+        ZipOutputStream(archive.outputStream()).use { addFile(it, DatabaseBackup.ARCHIVE_DATABASE, source) }
+        manager.stageRestore(archive, includeDatabase = true, includeFiles = false)
+        assertEquals("live", probe(liveDatabase))
+        assertTrue("The imported source must remain unchanged", originalBytes.contentEquals(source.readBytes()))
+        val staged = File(context.noBackupFilesDir, "backup-restore/pending/payload/database/rikka_hub")
+        withRoom(staged) { fixture.assertPreserved(it.openHelper.writableDatabase) }
+        liveDatabase.close()
+        assertTrue(BackupManager.applyPendingRestore(context, JsonInstant))
+        liveDatabase = AppDatabaseFactory.create(context)
+        fixture.assertPreserved(liveDatabase.openHelper.writableDatabase)
+    }
+
+    @Test fun malformedHistoricalBackupFailsRoomValidationWithoutReplacingLiveData() = runBlocking {
+        val source = File(directory, "malformed-source")
+        HistoricalDatabaseFixture.UPSTREAM_33.create(context, source, malformed = true)
+        val archive = File(directory, "malformed.zip")
+        ZipOutputStream(archive.outputStream()).use { addFile(it, DatabaseBackup.ARCHIVE_DATABASE, source) }
+        var failed = false
+        try {
+            manager.stageRestore(archive, includeDatabase = true, includeFiles = false)
+        } catch (_: Exception) {
+            failed = true
+        }
+        assertTrue("An incomplete table must fail final Room validation", failed)
         assertFalse(File(context.noBackupFilesDir, "backup-restore/pending").exists())
         assertEquals("live", probe(liveDatabase))
     }

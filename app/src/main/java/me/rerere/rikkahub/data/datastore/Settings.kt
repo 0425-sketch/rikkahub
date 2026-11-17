@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.datastore
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import me.rerere.ai.provider.providers.chatgpt.CacheDiagnosticMode
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
@@ -34,6 +35,8 @@ data class Settings(
     val themeId: String = PresetThemes[0].id,
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
+    val requestLoggingEnabled: Boolean = false,
+    val cacheDiagnosticMode: CacheDiagnosticMode = CacheDiagnosticMode.OFF,
     val displaySetting: DisplaySetting = DisplaySetting(),
     val networkSetting: NetworkSetting = NetworkSetting(),
     val favoriteModels: List<Uuid> = emptyList(),
@@ -54,7 +57,7 @@ data class Settings(
     val enableSuggestion: Boolean = true,
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     // 回复结束后上下文占用达到聊天模型上下文窗口的 autoCompressThreshold 时自动压缩历史
-    val enableAutoCompress: Boolean = false,
+    val enableAutoCompress: Boolean = true,
     val autoCompressThreshold: Float = 0.8f,
     val ocrModelId: Uuid = Uuid.random(),
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
@@ -143,6 +146,7 @@ data class DisplaySetting(
     val userNickname: String = "",
     val showUserAvatar: Boolean = true,
     val showAssistantBubble: Boolean = false,
+    val splitAssistantBubbleByParagraph: Boolean = false,
     val bubbleOpacity: Float = 1.0f,
     val showModelIcon: Boolean = true,
     val showModelName: Boolean = true,

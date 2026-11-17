@@ -17,6 +17,35 @@ plugins {
     alias(libs.plugins.baselineprofile)
 }
 
+// An unsigned APK is useful for local compilation checks, but cannot replace an installed app.
+// Personal builds must never silently fall back to a newly generated Android Debug key.
+val personalUnsigned = providers.gradleProperty("personalUnsigned")
+    .map(String::toBooleanStrict).getOrElse(false)
+val personalSigningAvailable = providers.environmentVariable("CHATGPT_TEST_KEYSTORE")
+    .orNull?.isNotBlank() == true
+val verifyPersonalSigning = tasks.register("verifyPersonalSigning") {
+    // Capture values inside task configuration; do not retain the Kotlin build-script object.
+    val unsignedAllowed = personalUnsigned
+    val signerAvailable = personalSigningAvailable
+    doLast {
+        check(unsignedAllowed || signerAvailable) {
+            "Personal APK signing material is unavailable. Restore the existing fixed signer, " +
+                "or use -PpersonalUnsigned=true to build an unsigned verification APK that cannot be installed. " +
+                "No replacement signing key will be generated."
+        }
+        if (unsignedAllowed) {
+            logger.lifecycle("Personal APK is explicitly UNSIGNED; it cannot be installed or used for an in-place update.")
+        }
+    }
+}
+
+// Keep normal JVM compilation/tests available without a signer; guard only APK/AAB production.
+tasks.configureEach {
+    if (name in setOf("packageGithubDebug", "packageGithubDebugBundle", "signGithubDebugBundle", "assembleGithubDebug", "bundleGithubDebug")) {
+        dependsOn(verifyPersonalSigning)
+    }
+}
+
 android {
     namespace = "me.rerere.rikkahub"
     compileSdk {
@@ -29,8 +58,8 @@ android {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 196
-        versionName = "3.2.0"
+        versionCode = 197
+        versionName = "3.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -53,8 +82,8 @@ android {
 
     signingConfigs {
         // Fixed personal signing is restored from durable Actions secrets before release builds.
-        // Local compile/test tasks may use debug defaults, but publication never accepts them.
-        providers.environmentVariable("CHATGPT_TEST_KEYSTORE").orNull?.let { keystorePath ->
+        // Local compile/test tasks do not need a signer; personal APK creation is guarded above.
+        providers.environmentVariable("CHATGPT_TEST_KEYSTORE").orNull?.takeIf(String::isNotBlank)?.let { keystorePath ->
             create("chatgptTest") {
                 storeFile = file(keystorePath)
                 storePassword = providers.environmentVariable("CHATGPT_TEST_STORE_PASSWORD").get()
@@ -97,6 +126,8 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            // Select signing per variant below so personal builds never create a debug key.
+            signingConfig = null
             configure<CrashlyticsExtension> {
                 mappingFileUploadEnabled = false
                 nativeSymbolUploadEnabled = false
@@ -129,6 +160,25 @@ android {
     }
     sourceSets {
         getByName("androidTest").assets.directories.add("$projectDir/schemas")
+        getByName("test").resources.directories.addAll(
+            listOf("$projectDir/schemas", "$projectDir/src/androidTest/assets")
+        )
+    }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.jvmArgs(
+                "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                "--add-opens=java.base/java.util=ALL-UNNAMED",
+                "--add-opens=java.base/java.io=ALL-UNNAMED",
+                "--add-opens=java.base/java.net=ALL-UNNAMED",
+                "--add-opens=java.base/java.security=ALL-UNNAMED",
+                "--add-opens=java.base/java.text=ALL-UNNAMED",
+                "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+                "--add-opens=java.desktop/java.awt.font=ALL-UNNAMED",
+                "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+            )
+        }
     }
     androidResources {
         generateLocaleConfig = true
@@ -180,14 +230,21 @@ androidComponents {
         // Durable signing and two clean restore builds are required before publication.
         variant.applicationId.set("me.rerere.rikkahub.personal")
         variant.outputs.forEach { output ->
-            output.versionCode.set(200)
-            output.versionName.set("3.2.0-personal.2")
+            output.versionCode.set(201)
+            output.versionName.set("3.3.0-personal.1")
         }
-        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.2.0-personal.2\"", null))
-        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"200\"", null))
-        android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
-            variant.signingConfig?.from(signingConfig)
+        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.3.0-personal.1\"", null))
+        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"201\"", null))
+        if (!personalUnsigned) {
+            android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
+                checkNotNull(variant.signingConfig) { "AGP did not expose signing configuration for the personal APK." }
+                    .from(signingConfig)
+            }
         }
+    }
+    onVariants(selector().withBuildType("debug").withFlavor("distribution" to "play")) { variant ->
+        checkNotNull(variant.signingConfig) { "AGP did not expose signing configuration for the Play debug APK." }
+            .from(android.signingConfigs.getByName("debug"))
     }
     finalizeDsl { extension ->
         extension.buildTypes.findByName("nonMinifiedRelease")?.optimization?.enable = false
@@ -394,6 +451,7 @@ dependencies {
     // tests
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("org.robolectric:robolectric:4.18")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

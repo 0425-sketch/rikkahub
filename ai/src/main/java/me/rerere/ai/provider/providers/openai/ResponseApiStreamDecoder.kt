@@ -61,7 +61,11 @@ internal class ResponseApiStreamDecoder(
             eventType == "response.completed" || eventType == "response.incomplete" ||
                 event.event == "response.completed" || event.event == "response.incomplete"
         }
-        return DecodeResult(chunks, completed)
+        return DecodeResult(
+            chunks = chunks,
+            completed = completed,
+            completedResponse = if (completed) payload["response"]?.jsonObjectOrNull else null,
+        )
     }
 
     override fun onClosed(): List<StreamChunk> {
@@ -250,13 +254,15 @@ internal class ResponseApiStreamDecoder(
     }
 
     private fun reconcileToolArguments(callId: String, arguments: String?): List<StreamChunk> {
-        val accumulated = state.toolInputs[callId].orEmpty()
-        val complete = arguments ?: accumulated
-        if (!complete.startsWith(accumulated) || runCatching { json.parseToJsonElement(complete) as? JsonObject }.getOrNull() == null) {
+        val accumulated = state.toolInputs[callId]
+        // Compare against the appendable buffer directly. Only materialize it when a terminal
+        // event omits arguments; ordinary deltas must never copy the entire accumulated input.
+        val complete = arguments ?: accumulated?.toString().orEmpty()
+        if (!complete.startsWith(accumulated ?: "") || runCatching { json.parseToJsonElement(complete) as? JsonObject }.getOrNull() == null) {
             failWithError(JsonPrimitive("ChatGPT 工具参数不完整或在流中发生冲突，已停止执行。"))
         }
         verifiedToolIds += callId
-        return state.toolDelta(callId, complete.removePrefix(accumulated))
+        return state.toolDelta(callId, complete.substring(accumulated?.length ?: 0))
     }
 
     // 部分兼容网关的 arguments 事件不带 item_id，只带 call_id，依次回退到 call_id、output_index
@@ -334,7 +340,7 @@ internal class ResponseApiStreamDecoder(
         val toolCallIdsByOutputIndex = mutableMapOf<Int, String>()
         val toolIdsWithInput = mutableSetOf<String>()
         val toolNames = mutableMapOf<String, String>()
-        val toolInputs = mutableMapOf<String, String>()
+        val toolInputs = mutableMapOf<String, StringBuilder>()
         val reasoningMetadata = mutableMapOf<String, JsonObject>()
 
         // 文本 id（item:text:index）到当前 part id。xAI 在服务端工具前后都往同一个 message item 写正文，
@@ -423,7 +429,7 @@ internal class ResponseApiStreamDecoder(
             }
             if (input.isNotEmpty()) {
                 toolIdsWithInput += id
-                toolInputs[id] = toolInputs[id].orEmpty() + input
+                toolInputs.getOrPut(id) { StringBuilder() }.append(input)
                 add(StreamChunk.ToolCallDelta(id, inputDelta = input))
             }
         }

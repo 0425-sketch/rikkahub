@@ -1,6 +1,6 @@
 package me.rerere.ai.provider.providers.openai
 
-import android.util.Log
+import me.rerere.common.android.Logging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -53,6 +53,7 @@ import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.configureSessionHeaders
 import me.rerere.ai.util.encodeBase64
 import me.rerere.ai.util.json
+import me.rerere.ai.util.logRequestBody
 import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.mergeCustomHeaders
 import me.rerere.ai.util.parseErrorDetail
@@ -102,7 +103,8 @@ class ChatCompletionsAPI(
             .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
+        val diagnostic = Logging.requestScope(request)
+        logRequestBody(diagnostic, TAG, "generateText") { json.encodeToString(requestBody) }
 
         val response = client.newCall(request).await()
         if (!response.isSuccessful) {
@@ -158,17 +160,17 @@ class ChatCompletionsAPI(
             .configureSessionHeaders(providerSetting.baseUrl, params.sessionId)
             .build()
 
-        Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        val diagnostic = Logging.requestScope(request)
+        logRequestBody(diagnostic, TAG, "streamText") { json.encodeToString(requestBody) }
 
         // just for debugging response body
-        // println(client.newCall(request).await().body?.string())
 
         val decoder = ChatCompletionsStreamDecoder()
 
         fun sendChunks(chunks: Iterable<StreamChunk>) {
             chunks.forEach { chunk ->
                 trySend(chunk).onFailure { e ->
-                    Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                    diagnostic.diagnostic(TAG) { "onEvent: chunk dropped (${e?.message})" }
                 }
             }
         }
@@ -180,7 +182,7 @@ class ChatCompletionsAPI(
                 type: String?,
                 data: String
             ) {
-                Log.d(TAG, "onEvent: $data")
+                diagnostic.diagnostic(TAG) { "onEvent: $data" }
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
                     sendChunks(result.chunks)
@@ -193,20 +195,20 @@ class ChatCompletionsAPI(
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
                 var exception = t
 
-                t?.printStackTrace()
-                println("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response")
+                diagnostic.diagnostic(TAG, t) { "Provider operation failed" }
+                diagnostic.diagnostic(TAG) { ("[onFailure] 发生错误: ${t?.javaClass?.name} ${t?.message} / $response").toString() }
 
                 val bodyRaw = response?.body?.stringSafe()
                 try {
                     if (!bodyRaw.isNullOrBlank()) {
                         val bodyElement = Json.parseToJsonElement(bodyRaw)
-                        println(bodyElement)
+                        diagnostic.diagnostic(TAG) { (bodyElement).toString() }
                         exception = bodyElement.parseErrorDetail()
-                        Log.i(TAG, "onFailure: $exception")
+                        diagnostic.diagnostic(TAG) { "onFailure: $exception" }
                     }
                 } catch (e: Throwable) {
-                    Log.w(TAG, "onFailure: failed to parse from $bodyRaw")
-                    e.printStackTrace()
+                    diagnostic.diagnostic(TAG) { "onFailure: failed to parse from $bodyRaw" }
+                    diagnostic.diagnostic(TAG, e) { "Provider operation failed" }
                     exception = e
                 } finally {
                     close(exception)
@@ -222,7 +224,7 @@ class ChatCompletionsAPI(
         val eventSource = client.newEventSource(request, listener)
 
         awaitClose {
-            println("[awaitClose] 关闭eventSource ")
+            diagnostic.diagnostic(TAG) { ("[awaitClose] 关闭eventSource ").toString() }
             eventSource.cancel()
         }
         // trySend 在缓冲满时会静默丢弃 delta，导致回复中间缺字 (#1295)，因此缓冲必须无界
@@ -622,7 +624,7 @@ class ChatCompletionsAPI(
                                             put("url", encodedImage.base64)
                                         })
                                     }.onFailure {
-                                        it.printStackTrace()
+                                        Logging.diagnostic(TAG, it) { "Provider operation failed" }
                                         put("type", "text")
                                         put("text", "")
                                     }
@@ -679,7 +681,7 @@ class ChatCompletionsAPI(
                                             put("url", encodedImage.base64)
                                         })
                                     }.onFailure {
-                                        it.printStackTrace()
+                                        Logging.diagnostic(TAG, it) { "Provider operation failed" }
                                         put("type", "text")
                                         put("text", "")
                                     }
@@ -727,7 +729,7 @@ class ChatCompletionsAPI(
                                         put("url", encodedImage.base64)
                                     })
                                 }.onFailure {
-                                    Log.w(TAG, "encode tool result image failed: ${part.url}", it)
+                                    Logging.diagnostic(TAG, it) { "Tool result image encoding failed" }
                                     put("type", "text")
                                     put("text", "Error: Failed to encode image to base64")
                                 }

@@ -1,7 +1,7 @@
 package me.rerere.rikkahub.data.ai.mcp
 
+import me.rerere.common.android.Logging
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -55,7 +55,7 @@ internal class McpOAuthCoordinator(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "OAuth authorization failed for ${config.commonOptions.name}", e)
+                Logging.diagnostic(TAG, e) { "OAuth authorization failed for ${config.commonOptions.name}" }
                 updateStatus(config.id, McpStatus.Error.from(e, fallbackMessage = "OAuth authorization failed"))
             }
         }
@@ -116,7 +116,7 @@ internal class McpOAuthCoordinator(
                 persistOAuthState(config.id, updated)
                 config.clone(commonOptions = config.commonOptions.copy(oauth = updated))
             }.getOrElse {
-                Log.w(TAG, "Token refresh failed for ${config.commonOptions.name}: ${it.message}")
+                Logging.diagnostic(TAG, it) { "Token refresh failed for ${config.commonOptions.name}" }
                 config
             }
         }
@@ -129,7 +129,7 @@ internal class McpOAuthCoordinator(
         if (looksUnauthorized(error)) return true
         return runCatching { discoveryClient.discoverProtectedResource(config.serverUrl) }
             .onFailure {
-                Log.i(TAG, "OAuth probe failed for ${config.commonOptions.name}: ${it.message}")
+                Logging.diagnostic(TAG, it) { "OAuth probe failed for ${config.commonOptions.name}" }
             }
             .isSuccess
     }
@@ -140,7 +140,7 @@ internal class McpOAuthCoordinator(
 
         // 部分服务器（如 Zomato）不提供 RFC 9728 元数据，按旧版规范退回到服务器 origin 作为授权服务器
         val protectedResource = runCatching { discoveryClient.discoverProtectedResource(serverUrl) }
-            .onFailure { Log.i(TAG, "Protected resource discovery failed, fallback to server origin: ${it.message}") }
+            .onFailure { Logging.diagnostic(TAG, it) { "Protected resource discovery failed, fallback to server origin" } }
             .getOrNull()
         val issuer = protectedResource?.authorizationServers?.firstOrNull()
             ?: McpOAuthDiscoveryClient.serverOrigin(serverUrl)

@@ -1,7 +1,7 @@
 package me.rerere.rikkahub.data.ai.tools
 
+import me.rerere.common.android.Logging
 import android.content.Context
-import android.util.Log
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.BuiltInTools
@@ -119,7 +119,7 @@ class ChatToolFactory(
         if (totalChars <= MAX_TOOL_OUTPUT_CHARS) return output
 
         val fileName = "${Uuid.random()}.txt"
-        Log.i(TAG, "truncateOutput: saving $totalChars chars to $fileName")
+        Logging.diagnostic(TAG) { "truncateOutput: saving $totalChars chars to $fileName" }
         val fullText = textParts.joinToString("\n") { it.text }
         val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
         File(outputDir, fileName).writeText(fullText)
@@ -146,10 +146,9 @@ class ChatToolFactory(
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
         if (workspace.shellStatus != WorkspaceShellStatus.READY.name) {
-            Log.d(
-                TAG,
+            Logging.diagnostic(TAG) {
                 "createWorkspaceToolsIfReady: skip workspace tools, workspace=$workspaceId, status=${workspace.shellStatus}"
-            )
+            }
             return emptyList()
         }
         return createWorkspaceTools(workspaceId, workspaceRepository, cwd, conversationId, backgroundShellManager)

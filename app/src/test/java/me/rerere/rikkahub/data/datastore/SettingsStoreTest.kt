@@ -19,10 +19,15 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import me.rerere.rikkahub.data.model.Lorebook
+import me.rerere.ai.provider.providers.chatgpt.CacheDiagnosticMode
+import me.rerere.ai.provider.providers.chatgpt.ChatGPTCacheDiagnostics
+import me.rerere.common.android.Logging
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -55,6 +60,37 @@ class SettingsStoreTest {
     private suspend fun reopened(): Settings = open().store.awaitLoaded()
 
     @Test
+    fun `diagnostic settings default off apply immediately and survive process reopening`() = runBlocking {
+        val store = open().store
+        val initial = store.awaitLoaded()
+        assertFalse(initial.requestLoggingEnabled)
+        assertEquals(CacheDiagnosticMode.OFF, initial.cacheDiagnosticMode)
+        assertFalse(Logging.isRequestLoggingEnabled())
+        assertEquals(CacheDiagnosticMode.OFF, ChatGPTCacheDiagnostics.mode)
+
+        for (mode in listOf(CacheDiagnosticMode.LIGHT, CacheDiagnosticMode.FULL)) {
+            store.update { it.copy(requestLoggingEnabled = true, cacheDiagnosticMode = mode) }
+            assertTrue(Logging.isRequestLoggingEnabled())
+            assertEquals(mode, ChatGPTCacheDiagnostics.mode)
+        }
+        // Simulate process globals being reset before reading the same on-disk store.
+        Logging.setRequestLoggingEnabled(false)
+        ChatGPTCacheDiagnostics.setMode(CacheDiagnosticMode.OFF)
+        val restarted = open().store
+        val restored = restarted.awaitLoaded()
+        assertTrue(restored.requestLoggingEnabled)
+        assertTrue(Logging.isRequestLoggingEnabled())
+        assertEquals(CacheDiagnosticMode.FULL, ChatGPTCacheDiagnostics.mode)
+
+        restarted.update { it.copy(requestLoggingEnabled = false, cacheDiagnosticMode = CacheDiagnosticMode.OFF) }
+        assertFalse(Logging.isRequestLoggingEnabled())
+        assertEquals(CacheDiagnosticMode.OFF, ChatGPTCacheDiagnostics.mode)
+        val disabled = reopened()
+        assertFalse(disabled.requestLoggingEnabled)
+        assertEquals(CacheDiagnosticMode.OFF, disabled.cacheDiagnosticMode)
+    }
+
+    @Test
     fun `typing faster than the disk can write loses no keystroke`() = runBlocking {
         val opened = open()
         val store = opened.store
@@ -72,6 +108,26 @@ class SettingsStoreTest {
 
         assertEquals("hello world", store.settingsFlow.value.titlePrompt)
         assertEquals("hello world", reopened().titlePrompt)
+    }
+
+    @Test
+    fun `resetting an oversized stored field shrinks it on disk and keeps the rest`() = runBlocking {
+        val store = open().store
+        val big = Lorebook(name = "big", description = "x".repeat(200_000))
+        store.update { it.copy(lorebooks = listOf(big), titlePrompt = "kept") }
+        val (key, chars) = store.largeStoredFieldsFlow(minChars = 100_000).first().single()
+        assertEquals(SettingsStore.LOREBOOKS.name, key)
+        assertTrue(chars >= 200_000)
+
+        // 和安全模式一样：重启后的第一次写入就是清理
+        val restarted = open().store
+        restarted.resetStoredField(key)
+
+        assertEquals(emptyList<Lorebook>(), restarted.settingsFlow.value.lorebooks)
+        assertEquals(emptyList<Pair<String, Int>>(), restarted.largeStoredFieldsFlow(minChars = 100_000).first())
+        val reloaded = reopened()
+        assertEquals(emptyList<Lorebook>(), reloaded.lorebooks)
+        assertEquals("kept", reloaded.titlePrompt)
     }
 
     @Test

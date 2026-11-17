@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.datastore
 
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
+import me.rerere.ai.provider.providers.chatgpt.CacheDiagnosticMode
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.rikkahub.utils.JsonInstant
 import kotlin.reflect.KProperty1
@@ -26,6 +27,9 @@ internal class SettingsField<T, P : Any>(
         val stored = preferences[key] ?: return settings
         return settings.set(decode(stored))
     }
+
+    /** 把这个字段恢复成 key 不存在时的取值。 */
+    fun reset(settings: Settings): Settings = settings.set(property.get(MISSING_KEY_DEFAULTS))
 
     /** 编码结果为 null 时删除 key。 */
     fun write(preferences: MutablePreferences, settings: Settings) {
@@ -82,6 +86,14 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         json(DISPLAY_SETTING, Settings::displaySetting) { copy(displaySetting = it) },
         json(NETWORK_SETTING, Settings::networkSetting) { copy(networkSetting = it) },
         plain(DEVELOPER_MODE, Settings::developerMode) { copy(developerMode = it) },
+        plain(REQUEST_LOGGING_ENABLED, Settings::requestLoggingEnabled) { copy(requestLoggingEnabled = it) },
+        SettingsField(
+            CACHE_DIAGNOSTIC_MODE,
+            Settings::cacheDiagnosticMode,
+            { copy(cacheDiagnosticMode = it) },
+            encode = { it.name },
+            decode = { name -> CacheDiagnosticMode.entries.find { it.name == name } ?: CacheDiagnosticMode.OFF },
+        ),
 
         // 模型选择
         json(FAVORITE_MODELS, Settings::favoriteModels) { copy(favoriteModels = it) },

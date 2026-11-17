@@ -1,7 +1,6 @@
 package me.rerere.rikkahub.service
 
 import android.app.Application
-import android.util.Log
 import androidx.annotation.StringRes
 import androidx.core.net.toUri
 import kotlinx.coroutines.CancellationException
@@ -370,7 +369,7 @@ class ChatService(
         val deletedFiles = previous.files.filter { it !in retainedFiles }
         if (deletedFiles.isNotEmpty()) {
             filesManager.deleteChatFiles(deletedFiles)
-            Log.w(TAG, "deleteUnreferencedFiles: $deletedFiles")
+            Logging.diagnostic(TAG) { "deleteUnreferencedFiles: $deletedFiles" }
         }
     }
 
@@ -422,7 +421,7 @@ class ChatService(
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // 无法确认引用时保留文件，避免误删。
-                Log.w(TAG, "Failed to clean queued attachments", e)
+                Logging.diagnostic(TAG, e) { "Failed to clean queued attachments" }
             }
         }
     }
@@ -537,7 +536,7 @@ class ChatService(
                 if (queued.reply == null) _generationDoneFlow.emit(conversationId)
             } catch (e: Exception) {
                 queued.reply?.completeExceptionally(e)
-                e.printStackTrace()
+                Logging.diagnostic(TAG, e) { "Provider operation failed" }
                 reportFailure(session, e, R.string.error_title_send_message)
             }
         }
@@ -572,7 +571,7 @@ class ChatService(
                 runTurn(session)
                 _generationDoneFlow.emit(conversationId)
             } catch (e: NotFoundException) {
-                Log.w(TAG, "sendQueuedNotices: conversation $conversationId not found, dropping notices")
+                Logging.diagnostic(TAG) { "sendQueuedNotices: conversation $conversationId not found, dropping notices" }
                 session.inbox.takeNotices()
             } catch (e: Exception) {
                 reportFailure(session, e, R.string.error_title_generation)
@@ -769,7 +768,7 @@ class ChatService(
                             }
 
                             is AgentEvent.Finished -> {
-                                Log.i(TAG, "runTurn: finished (${event.reason})")
+                                Logging.diagnostic(TAG) { "runTurn: finished (${event.reason})" }
                                 finishReason = event.reason
                             }
                         }
@@ -822,10 +821,8 @@ class ChatService(
             // 兜底取消 Live Update 通知（生成开始前失败时上面的 finally 不会执行）
             appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
             session.inbox.pause()
-            e.printStackTrace()
+            Logging.diagnostic(TAG, e) { "Provider operation failed" }
             addError(e, conversationId, title = context.getString(R.string.error_title_generation))
-            Logging.log(TAG, "runTurn: $e")
-            Logging.log(TAG, e.stackTraceToString())
             return TurnResult.Failed
         }
     }
@@ -845,11 +842,9 @@ class ChatService(
     }
 
     private fun logRetry(attempt: RetryAttempt) {
-        Log.w(
-            TAG,
-            "Provider connection failed, retrying in ${attempt.delay} (${attempt.retry}/${attempt.maxRetries})",
-            attempt.cause,
-        )
+        Logging.diagnostic(TAG, attempt.cause) {
+            "Provider connection failed, retrying in ${attempt.delay} (${attempt.retry}/${attempt.maxRetries})"
+        }
     }
 
     private fun retryStatus(attempt: RetryAttempt): String {
@@ -897,7 +892,7 @@ class ChatService(
                     expectedIncarnation = incarnation,
                 )
             }.onFailure {
-                it.printStackTrace()
+                Logging.diagnostic(TAG, it) { "Provider operation failed" }
                 addError(
                     error = it,
                     conversationId = conversationId,
@@ -929,7 +924,7 @@ class ChatService(
                     expectedIncarnation = incarnation,
                 )
             }.onFailure {
-                it.printStackTrace()
+                Logging.diagnostic(TAG, it) { "Provider operation failed" }
             }
         }
     }
@@ -996,7 +991,7 @@ class ChatService(
                 clearSuggestions = false,
             ) { result ->
                 result.onFailure { e ->
-                    Log.w(TAG, "Auto compression failed", e)
+                    Logging.diagnostic(TAG, e) { "Auto compression failed" }
                     // 这一轮的回复已经完成，压缩失败不暂停队列；取消时 addError 会忽略
                     addError(e, session.id, title = context.getString(R.string.error_title_auto_compress))
                 }
@@ -1069,7 +1064,7 @@ class ChatService(
             true
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            Log.w(TAG, "Mid-turn compression failed", e)
+            Logging.diagnostic(TAG, e) { "Mid-turn compression failed" }
             addError(e, session.id, title = context.getString(R.string.error_title_auto_compress))
             false
         } finally {

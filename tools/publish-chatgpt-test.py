@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 200
-VERSION_NAME = "3.2.0-personal.2"
+VERSION_CODE = 201
+VERSION_NAME = "3.3.0-personal.1"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 
@@ -202,7 +202,7 @@ def main():
     }
     restoration_file = args.output / "signing-restoration-verification.json"
     restoration_file.write_text(json.dumps(restoration, indent=2) + "\n")
-    tag = f"custom-3.2.0-personal-{source_sha[:12]}-{run_id}-{attempt}"
+    tag = f"custom-3.3.0-personal-{source_sha[:12]}-{run_id}-{attempt}"
     metadata["tag"] = tag
     metadata["actions_url"] = f"https://github.com/{REPO}/actions/runs/{run_id}"
     metadata["signing_persistence"] = "durable-primary-and-backup-secrets"
@@ -216,16 +216,16 @@ def main():
     provenance.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     notes = args.output / "release-notes.txt"
     notes.write_text(
-        "RikkaHub 3.2.0 — 生成中用量显示修复版\n\n"
+        "RikkaHub 3.3.0 — 自用升级与诊断优化版\n\n"
         f"源码： https://github.com/{REPO}/commit/{source_sha}\n"
         f"Actions： {metadata['actions_url']}\n\n"
-        "ARM64，Android 8.0 及以上。与RikkaHub 自用personal.1同包同签名，版本号递增，可直接覆盖安装并保留聊天和登录。\n"
+        "ARM64，Android 8.0 及以上。沿用RikkaHub 3.2.0自用personal版的包名与固定签名，版本号递增。\n"
         "长期签名已保存为GitHub Actions加密主用与恢复副本，并在两个独立runner中恢复、构建和核验证书一致。\n"
         "恢复副本位于同一仓库的Secret存储，不是跨平台灾备。后续此包名更新固定复用该证书。\n\n"
         "已安装RikkaHub 自用的用户无需再次迁移或重新登录。首次从更旧的ChatGPT测试版迁移，仍可用设置→数据备份→本地导出/导入ZIP后授权。\n"
-        "本次修复生成期间的用量显示：当前请求还未返回统计时显示待更新，完成后仍缺失才显示未知；已报告的数值（包括0）照常显示。\n"
-        "回归验证同时发现并修复临时登录回调服务关闭过早可能截断成功页面的问题，认证协议和凭据处理不变。\n"
-        "保留已跑通的SIWC OAuth、稳定session_id、真实缓存统计和全部既有修复，不修改请求、工具执行或计量。用户真机样本已确认缓存实际命中，不承诺每次请求的命中率。\n"
+        "整合正式tag 3.3.0，保留新版SIWC、稳定session_id及真实缓存用量统计。\n"
+        "改进日志脱敏与关闭选项、缓存诊断分级和开销、分叉数据库迁移、Gemini签名兼容及工具参数累积。\n"
+        "正常用量统计保留未知与真实零值的区别；关闭诊断不会改变服务端缓存策略。\n"
         "套餐原生生图仍不支持；未实现应用内真实套餐余额。\n\n"
         f"APK SHA-256: `{metadata['apk_sha256']}`\n"
         f"证书 SHA-256: `{metadata['certificate_sha256']}`\n",

@@ -32,6 +32,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.rerere.ai.provider.providers.chatgpt.ChatGPTCacheDiagnostics
+import me.rerere.common.android.Logging
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV1Migration
@@ -107,6 +109,8 @@ class SettingsStore internal constructor(
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
         val NETWORK_SETTING = stringPreferencesKey("network_setting")
         val DEVELOPER_MODE = booleanPreferencesKey("developer_mode")
+        val REQUEST_LOGGING_ENABLED = booleanPreferencesKey("request_logging_enabled")
+        val CACHE_DIAGNOSTIC_MODE = stringPreferencesKey("cache_diagnostic_mode")
 
         // 模型选择
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
@@ -230,7 +234,7 @@ class SettingsStore internal constructor(
         // 整份设置的 JSON 解码很重，不能放在主线程
         scope.launch(Dispatchers.Default) {
             state.value = try {
-                preferencesFlow.first().toSettings().normalized()
+                preferencesFlow.first().toSettings().normalized().also(::applyDiagnosticSettings)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -266,7 +270,9 @@ class SettingsStore internal constructor(
             }
             // 规整会重建提供商、助手等对象，而界面按引用判断它们有没有变：规整没改动任何东西时保留传入的实例
             val normalized = updated.normalized()
-            state.value = if (normalized == updated) updated else normalized
+            val latest = if (normalized == updated) updated else normalized
+            applyDiagnosticSettings(latest)
+            state.value = latest
         }
         persist()
     }
@@ -285,6 +291,26 @@ class SettingsStore internal constructor(
                 }
             }
         }
+    }
+
+    /**
+     * 盘上占用不小于 [minChars] 个字符的字段：key 名和字符数，从大到小。
+     *
+     * 只看盘上的原始字符串长度，不做解码，给安全模式找出撑爆内存的数据用。
+     */
+    fun largeStoredFieldsFlow(minChars: Int): Flow<List<Pair<String, Int>>> = preferencesFlow
+        .map { preferences ->
+            SETTINGS_FIELDS
+                .mapNotNull { field -> (preferences[field.key] as? String)?.let { field.key.name to it.length } }
+                .filter { (_, chars) -> chars >= minChars }
+                .sortedByDescending { (_, chars) -> chars }
+        }
+        .distinctUntilChanged()
+
+    /** 把 [keyName] 对应的字段恢复成默认值，返回时已经落盘。认不出的 key 不做任何事。 */
+    suspend fun resetStoredField(keyName: String) {
+        val field = SETTINGS_FIELDS.find { it.key.name == keyName } ?: return
+        update { field.reset(it) }
     }
 
     // 只原子地修改单个 key，不经过 Settings
@@ -346,4 +372,10 @@ class SettingsStore internal constructor(
             )
         }
     }
+}
+
+/** Applied before publishing state, so disabling diagnostics takes effect before update returns. */
+private fun applyDiagnosticSettings(settings: Settings) {
+    Logging.setRequestLoggingEnabled(settings.requestLoggingEnabled)
+    ChatGPTCacheDiagnostics.setMode(settings.cacheDiagnosticMode)
 }

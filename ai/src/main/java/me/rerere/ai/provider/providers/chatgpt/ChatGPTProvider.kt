@@ -104,6 +104,9 @@ class ChatGPTProvider(
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): Flow<StreamChunk> = flow {
+        // Snapshot collection permission for this logical request. Turning diagnostics off
+        // invalidates it, including retries and requests already waiting for authentication.
+        val diagnosticToken = ChatGPTCacheDiagnostics.collectionToken()
         var account: String? = null
         var diagnosticRequest: Long? = null
         try {
@@ -116,20 +119,26 @@ class ChatGPTProvider(
                             providerSetting, params.customHeaders,
                             sessionId = params.sessionId, manageSessionAffinity = true,
                         ) { credential ->
-                            account = ChatGPTCacheDiagnostics.accountKey(providerSetting, credential)
+                            if (diagnosticToken != null && ChatGPTCacheDiagnostics.isCollecting(diagnosticToken)) {
+                                account = ChatGPTCacheDiagnostics.accountKey(providerSetting, credential)
+                            }
                         }
                     },
-                    observeRequest = { request, body ->
+                    observationEnabled = { diagnosticToken != null && ChatGPTCacheDiagnostics.isCollecting(diagnosticToken) },
+                    observeRequest = if (diagnosticToken == null) null else { request, body ->
                         account?.let { identity ->
                             val previous = diagnosticRequest
                             previous?.let(ChatGPTCacheDiagnostics::ended)
                             diagnosticRequest = ChatGPTCacheDiagnostics.begin(
                                 identity, body, params.sessionId,
-                                finalSessionIdHeader = request.header("session_id"), previousAttempt = previous,
-                            )
+                                finalSessionIdHeader = request.header("session_id"), previousAttempt = previous, token = diagnosticToken,
+                            ).takeIf { it != CacheDiagnosticRecorder.NO_RECORD }
                         }
                     },
-                    observeCompletedResponse = { response ->
+                    observeHttpStatus = if (diagnosticToken == null) null else { status ->
+                        diagnosticRequest?.let { ChatGPTCacheDiagnostics.httpStatus(it, status) }
+                    },
+                    observeCompletedResponse = if (diagnosticToken == null) null else { response ->
                         diagnosticRequest?.let { ChatGPTCacheDiagnostics.serverDiagnostics(it, response) }
                     },
                 ),

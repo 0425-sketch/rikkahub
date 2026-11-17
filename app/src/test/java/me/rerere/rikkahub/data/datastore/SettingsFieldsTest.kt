@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.elementNames
+import me.rerere.ai.provider.providers.chatgpt.CacheDiagnosticMode
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
@@ -80,6 +81,24 @@ class SettingsFieldsTest {
     }
 
     @Test
+    fun `diagnostics missing or unknown values are off and explicit choices are preserved`() {
+        val missing = emptyPreferences().toSettings()
+        assertFalse(missing.requestLoggingEnabled)
+        assertEquals(CacheDiagnosticMode.OFF, missing.cacheDiagnosticMode)
+        val stored = mutablePreferencesOf(
+            SettingsStore.REQUEST_LOGGING_ENABLED to true,
+            SettingsStore.CACHE_DIAGNOSTIC_MODE to "FULL",
+            SettingsStore.ENABLE_AUTO_COMPRESS to false,
+        ).toSettings()
+        assertEquals(true, stored.requestLoggingEnabled)
+        assertEquals(CacheDiagnosticMode.FULL, stored.cacheDiagnosticMode)
+        assertFalse(stored.enableAutoCompress)
+        assertEquals(CacheDiagnosticMode.OFF, mutablePreferencesOf(
+            SettingsStore.CACHE_DIAGNOSTIC_MODE to "UNKNOWN_FUTURE_MODE",
+        ).toSettings().cacheDiagnosticMode)
+    }
+
+    @Test
     fun `unknown reasoning level reads as auto`() {
         val preferences = mutablePreferencesOf(SettingsStore.FAST_MODEL_REASONING_LEVEL to "REMOVED_LEVEL")
 
@@ -117,6 +136,8 @@ private val SAMPLE = Settings(
     themeId = "custom",
     customThemes = listOf(CustomTheme(id = "theme", name = "Theme")),
     developerMode = true,
+    requestLoggingEnabled = true,
+    cacheDiagnosticMode = CacheDiagnosticMode.FULL,
     displaySetting = DisplaySetting(userNickname = "me"),
     networkSetting = NetworkSetting(userAgent = "agent"),
     favoriteModels = listOf(id(30)),
@@ -136,7 +157,7 @@ private val SAMPLE = Settings(
     suggestionPrompt = "suggestion",
     ocrModelId = id(5),
     ocrPrompt = "ocr",
-    enableAutoCompress = true,
+    enableAutoCompress = false,
     autoCompressThreshold = 0.9f,
     assistantId = id(20),
     providers = listOf(ProviderSetting.OpenAI(id = id(31), name = "Provider")),
@@ -178,6 +199,8 @@ private val STORED_KEYS = setOf(
     "display_setting",
     "network_setting",
     "developer_mode",
+    "request_logging_enabled",
+    "cache_diagnostic_mode",
     "favorite_models",
     "chat_model",
     "fast_model",

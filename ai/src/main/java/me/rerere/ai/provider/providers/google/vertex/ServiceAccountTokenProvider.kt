@@ -102,11 +102,15 @@ class ServiceAccountTokenProvider(
 
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) {
-                val body = resp.body.string()
-                throw IllegalStateException("Token endpoint ${resp.code}: $body")
+                // Authentication servers may echo the assertion or private credentials in their body.
+                throw IllegalStateException("Token endpoint returned HTTP ${resp.code}; check service account credentials and permissions")
             }
             val body = resp.body.string()
-            val tokenResp = json.decodeFromString(TokenResponse.serializer(), body)
+            val tokenResp = try {
+                json.decodeFromString(TokenResponse.serializer(), body)
+            } catch (_: Exception) {
+                throw IllegalStateException("Token endpoint returned a malformed authentication response")
+            }
             val accessToken = tokenResp.accessToken ?: error("No access_token in response")
 
             // Cache the token with expiration time

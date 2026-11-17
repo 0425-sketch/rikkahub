@@ -5,6 +5,8 @@ import io
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -21,6 +23,31 @@ class PublishReached(Exception):
 
 
 class ChatGPTReleaseSigningTest(unittest.TestCase):
+    def test_release_identity_matches_android_output_and_build_config(self):
+        source = (Path(__file__).resolve().parents[2] / "app/build.gradle.kts").read_text()
+        self.assertEqual(release.VERSION_CODE, int(re.search(r"output\.versionCode\.set\((\d+)\)", source)[1]))
+        self.assertEqual(release.VERSION_NAME, re.search(r'output\.versionName\.set\("([^"]+)"\)', source)[1])
+        self.assertGreater(release.VERSION_CODE, 200)
+        self.assertEqual("3.3.0-personal.1", release.VERSION_NAME)
+
+    def test_inspection_rejects_unsigned_apk_before_publication(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(release.subprocess, "run", side_effect=subprocess.CalledProcessError(1, ["apksigner"])), \
+             patch.object(release.delivery, "gh") as gh:
+            with self.assertRaises(subprocess.CalledProcessError):
+                release.inspect_apk(Path(tmp) / "unsigned.apk", Path(tmp))
+            gh.assert_not_called()
+
+    def test_inspection_rejects_old_personal_version_with_valid_signature(self):
+        signature = f"Signer certificate SHA-256 digest: {CERT}\n"
+        badging = "package: name='me.rerere.rikkahub.personal' versionCode='200' versionName='3.2.0-personal.2'\n"
+        with tempfile.TemporaryDirectory() as tmp, patch.object(release.subprocess, "run", side_effect=[
+            subprocess.CompletedProcess([], 0, stdout=signature),
+            subprocess.CompletedProcess([], 0, stdout=badging),
+        ]):
+            with self.assertRaisesRegex(release.delivery.DeliveryError, "IDENTITY"):
+                release.inspect_apk(Path(tmp) / "previous.apk", Path(tmp))
+
     def metadata(self, certificate=CERT, **changes):
         return {"application_id": release.PACKAGE, "version_code": release.VERSION_CODE, "version_name": release.VERSION_NAME,
                 "min_sdk": 26, "architectures": ["arm64-v8a"], "certificate_sha256": certificate,
@@ -103,6 +130,10 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
                 self.invoke(Path(tmp))
             self.assertEqual(gh.call_count, 1)
             self.assertEqual(gh.call_args.args[0][:2], ["release", "create"])
+            self.assertEqual(f"custom-3.3.0-personal-{SHA[:12]}-1-1", gh.call_args.args[0][2])
+            notes = (Path(tmp) / "evidence/release-notes.txt").read_text()
+            self.assertIn("RikkaHub 3.3.0", notes)
+            self.assertNotIn("生成中用量显示修复版", notes)
             proof = json.loads((Path(tmp) / "evidence/signing-restoration-verification.json").read_text())
             self.assertTrue(proof["restoration_verified"])
             self.assertEqual(2, len(proof["clean_builds"]))

@@ -10,6 +10,10 @@ android {
 
     // Local protocol tests use real HTTP sockets; Android logging is not part of their contract.
     testOptions.unitTests.isReturnDefaultValues = true
+    buildFeatures {
+        // 请求体日志只在调试构建里打印，靠 BuildConfig.DEBUG 判断
+        buildConfig = true
+    }
 
     defaultConfig {
 //        externalNativeBuild {

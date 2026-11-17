@@ -1,5 +1,6 @@
 package me.rerere.ai.provider.stream
 
+import kotlinx.serialization.json.JsonObject
 import me.rerere.ai.ui.StreamChunk
 
 /**
@@ -18,4 +19,6 @@ data class DecodeResult(
     val chunks: List<StreamChunk> = emptyList(),
     /** Provider 协议已经明确结束，传输层可以主动关闭连接。 */
     val completed: Boolean = false,
+    /** Parsed Responses terminal metadata for observers; never requires parsing the SSE body again. */
+    val completedResponse: JsonObject? = null,
 )

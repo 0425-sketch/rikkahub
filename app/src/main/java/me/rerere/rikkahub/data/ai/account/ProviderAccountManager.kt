@@ -1,7 +1,7 @@
 package me.rerere.rikkahub.data.ai.account
 
+import me.rerere.common.android.Logging
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -28,11 +28,13 @@ import me.rerere.common.http.await
 import me.rerere.oauth.CustomTabsOAuthAuthorizationLauncher
 import me.rerere.oauth.OAuthHttpClient
 import me.rerere.oauth.OAuthLoopbackCallbackServer
+import me.rerere.oauth.DiagnosticHttpInterceptor
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.utils.JsonInstant
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.logging.HttpLoggingInterceptor
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -68,8 +70,8 @@ class ProviderAccountManager internal constructor(
 ) : AccountCredentialProvider {
     // 走应用的 OkHttpClient，授权和刷新请求也能用上设置里的代理
     private val privateClient = client.newBuilder().callTimeout(30, TimeUnit.SECONDS).apply {
-        interceptors().removeAll { it.javaClass.simpleName in setOf("HttpLoggingInterceptor", "RequestLoggingInterceptor", "SafeHttpLoggingInterceptor") }
-        networkInterceptors().removeAll { it.javaClass.simpleName in setOf("HttpLoggingInterceptor", "RequestLoggingInterceptor", "SafeHttpLoggingInterceptor") }
+        interceptors().removeAll { it is DiagnosticHttpInterceptor || it is HttpLoggingInterceptor }
+        networkInterceptors().removeAll { it is DiagnosticHttpInterceptor || it is HttpLoggingInterceptor }
     }.build()
     private val oauthClient = OAuthHttpClient(privateClient)
     private val idTokenVerifier = ChatGPTIdTokenVerifier(privateClient)
@@ -401,7 +403,7 @@ class ProviderAccountManager internal constructor(
             if (!response.isSuccessful) return@use null
             JsonInstant.parseToJsonElement(response.body.string()).jsonObject.claimString("email")
         }
-    }.onFailure { Log.w(TAG, "Failed to fetch Grok userinfo", it) }.getOrNull()
+    }.onFailure { Logging.diagnostic(TAG, it) { "Failed to fetch Grok userinfo" } }.getOrNull()
 
     private suspend fun persistCredential(providerId: Uuid, credential: OAuthCredential?) {
         settingsStore.update { old ->

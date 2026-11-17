@@ -26,10 +26,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
 import java.util.concurrent.TimeUnit
 
 /** Synthetic local protocol fixtures, never real subscription cache measurements. */
 class ChatGPTCacheDiagnosticsTest {
+    @Before fun enableDiagnostics() { ChatGPTCacheDiagnostics.setMode(CacheDiagnosticMode.FULL) }
+    @After fun disableDiagnostics() { ChatGPTCacheDiagnostics.setMode(CacheDiagnosticMode.OFF) }
     private fun body(input: String = """{"role":"developer","content":"secret-system"},{"role":"user","content":"secret-question"}""", tool: String = "secret-tool") =
         json.parseToJsonElement("""{"model":"synthetic-model","stream":true,"store":false,"reasoning":{"effort":"high"},"prompt_cache_key":"secret-session","tools":[{"name":"$tool"}],"input":[$input]}""").jsonObject
 
@@ -37,7 +41,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `export only retains bounded redacted hashes for current account`() {
-        val recorder = CacheDiagnosticRecorder(capacity = 2, salt = ByteArray(32) { 5 })
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL, capacity = 2, salt = ByteArray(32) { 5 })
         recorder.begin("account-A", body())
         recorder.begin("account-B", body())
         recorder.begin("account-A", body())
@@ -55,7 +59,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `missing terminal stats are unknown and explicit zero replaces previous snapshot`() {
-        val recorder = CacheDiagnosticRecorder()
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL)
         val unknown = recorder.begin("account", body())
         recorder.usage(unknown, TokenUsage(promptTokens = 20, promptTokensReported = true))
         recorder.serverDiagnostics(unknown, json.parseToJsonElement("""{"usage":{"input_tokens":20}}""").jsonObject)
@@ -89,7 +93,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `comparison distinguishes append-only tool history from modified prefix and tools`() {
-        val recorder = CacheDiagnosticRecorder()
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL)
         val original = body()
         recorder.begin("account", original, "stable-session")
         recorder.begin("account", body("""{"role":"developer","content":"secret-system"},{"role":"user","content":"secret-question"},{"type":"function_call","call_id":"secret-call","arguments":"secret-arguments"},{"type":"function_call_output","call_id":"secret-call","output":"secret-result"}"""), "stable-session")
@@ -108,7 +112,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `canonical object key order does not create a false prefix difference`() {
-        val recorder = CacheDiagnosticRecorder()
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL)
         recorder.begin("account", body(), "stable-session")
         recorder.begin("account", body("""{"content":"secret-system","role":"developer"},{"content":"secret-question","role":"user"}"""), "stable-session")
         assertEquals("2", recorder.requests("account").last().getValue("matching_input_items").jsonPrimitive.content)
@@ -130,7 +134,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `same client session detects changed wire cache key and retains max effort`() {
-        val recorder = CacheDiagnosticRecorder()
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL)
         val first = recorder.begin("account", body(), "secret-client-session")
         val modified = JsonObject(body() + mapOf(
             "prompt_cache_key" to JsonPrimitive("secret-new-wire-key"),
@@ -150,7 +154,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `auxiliary requests without sessions do not group by identical wire cache keys`() {
-        val recorder = CacheDiagnosticRecorder()
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL)
         recorder.begin("account", body(), "main-session")
         recorder.begin("account", body())
         recorder.begin("account", body())
@@ -164,7 +168,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `duplicate terminal response cannot overwrite first usage presence or diagnostic type`() {
-        val recorder = CacheDiagnosticRecorder()
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL)
         val request = recorder.begin("account", body())
         recorder.serverDiagnostics(request, json.parseToJsonElement("""{"usage":{"input_tokens":4096},"prompt_cache_diagnostics":{"type":"cache_hit"}}""").jsonObject)
         recorder.serverDiagnostics(request, JsonObject(emptyMap()))
@@ -175,7 +179,7 @@ class ChatGPTCacheDiagnosticsTest {
 
     @Test
     fun `header body and returned key fingerprints share a comparison domain without raw values`() {
-        val recorder = CacheDiagnosticRecorder()
+        val recorder = CacheDiagnosticRecorder(initialMode = CacheDiagnosticMode.FULL)
         val request = recorder.begin("account", body(), "client-session", finalSessionIdHeader = "secret-session")
         recorder.serverDiagnostics(request, json.parseToJsonElement("""{"prompt_cache_key":"secret-session"}""").jsonObject)
         val row = recorder.requests("account").single()

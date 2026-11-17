@@ -60,7 +60,7 @@ internal fun useCropLauncher(
                         }
                         onCroppedImageReady(outputFile.toUri())
                     }.onFailure { error ->
-                        Logging.log("CropLauncher", "crop failed: ${error.message} | ${error.stackTraceToString()}")
+                        Logging.diagnostic("CropLauncher", error) { "Image crop failed" }
                         toaster.show(
                             "Failed to crop image: ${error.message ?: "unknown error"}",
                             type = ToastType.Error

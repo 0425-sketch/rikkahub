@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Interceptor
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
@@ -20,6 +21,9 @@ import okio.Buffer
 import okio.BufferedSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.util.concurrent.Executors
 
@@ -46,6 +50,58 @@ class OAuthHttpClientTest {
     )
 
     private fun Request.bodyString(): String = Buffer().also { body!!.writeTo(it) }.readUtf8()
+
+    private class RenamedDiagnostic(private val observed: () -> Unit) : DiagnosticHttpInterceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            observed()
+            return chain.proceed(chain.request())
+        }
+    }
+
+    @Test fun `OAuth removes diagnostic interceptors even for nonstandard JSON token endpoints`() = runBlocking {
+        var diagnosticCalled = false
+        var sentBody: String? = null
+        val oauth = OAuthHttpClient(OkHttpClient.Builder()
+            .addInterceptor(RenamedDiagnostic { diagnosticCalled = true })
+            .addNetworkInterceptor(RenamedDiagnostic { diagnosticCalled = true })
+            .addInterceptor(okhttp3.logging.HttpLoggingInterceptor { diagnosticCalled = true }.apply {
+                level = okhttp3.logging.HttpLoggingInterceptor.Level.BODY
+            })
+            .addInterceptor { chain ->
+                sentBody = chain.request().bodyString()
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                    .code(200).message("OK")
+                    .body("""{"access_token":"new-access"}""".toResponseBody()).build()
+            }.build())
+        val result = oauth.refreshToken(OAuthHttpClient.RefreshTokenRequest(
+            tokenEndpoint = "https://example.test/custom-exchange",
+            clientId = "client", refreshToken = "private-refresh", encoding = OAuthHttpClient.TokenEncoding.JSON,
+        ))
+        assertFalse(diagnosticCalled)
+        assertEquals("private-refresh", Json.parseToJsonElement(sentBody!!).jsonObject["refresh_token"]!!.jsonPrimitive.content)
+        assertEquals("new-access", result.accessToken)
+    }
+
+    @Test fun `unknown OAuth error identifiers cannot echo refresh credentials`() = runBlocking {
+        val secret = "opaque_refresh_secret_123"
+        listOf("""{"error":"$secret"}""", """{"error":{"code":"$secret"}}""", """{"error_code":"$secret"}""").forEach { body ->
+            val oauth = OAuthHttpClient(OkHttpClient.Builder().addInterceptor { chain ->
+                Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                    .code(400).message("Bad Request").body(body.toResponseBody()).build()
+            }.build())
+            val error = runCatching {
+                oauth.refreshToken(OAuthHttpClient.RefreshTokenRequest(
+                    tokenEndpoint = "https://example.test/token", clientId = "client", refreshToken = secret,
+                ))
+            }.exceptionOrNull() as OAuthHttpClient.OAuthHttpException
+            assertNull(error.error)
+            assertFalse(error.stackTraceToString().contains(secret))
+            assertTrue(error.message!!.contains("400"))
+        }
+        listOf("invalid_grant", "invalid_client", "refresh_token_reused", "slow_down", "access_denied", "expired_token").forEach {
+            assertEquals(it, OAuthHttpClient.OAuthHttpException(400, it).error)
+        }
+    }
 
     @Test
     fun `refresh token uses form encoding by default`() = runBlocking {

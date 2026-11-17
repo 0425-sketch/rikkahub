@@ -24,6 +24,7 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.logging.HttpLoggingInterceptor
 import java.io.IOException
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -33,8 +34,13 @@ import kotlin.coroutines.resumeWithException
 
 /** OAuth 2.x 的通用 HTTP、PKCE、授权码和刷新令牌客户端。 */
 class OAuthHttpClient(
-    private val httpClient: OkHttpClient,
+    httpClient: OkHttpClient,
 ) {
+    // OAuth payloads are never handed to HTTP diagnostics, regardless of caller configuration.
+    private val httpClient = httpClient.newBuilder().apply {
+        interceptors().removeAll { it is DiagnosticHttpInterceptor || it is HttpLoggingInterceptor }
+        networkInterceptors().removeAll { it is DiagnosticHttpInterceptor || it is HttpLoggingInterceptor }
+    }.build()
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -149,7 +155,11 @@ class OAuthHttpClient(
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .build()
         val text = execute(httpRequest)
-        json.decodeFromString(ClientRegistrationResponse.serializer(), text)
+        try {
+            json.decodeFromString(ClientRegistrationResponse.serializer(), text)
+        } catch (_: Exception) {
+            throw TokenProtocolException()
+        }
     }
 
     fun generatePkce(): Pkce {
@@ -238,7 +248,12 @@ class OAuthHttpClient(
             .header("Accept", "application/json")
             .post(form)
             .build()
-        json.decodeFromString(DeviceAuthorization.serializer(), execute(httpRequest))
+        val text = execute(httpRequest)
+        try {
+            json.decodeFromString(DeviceAuthorization.serializer(), text)
+        } catch (_: Exception) {
+            throw TokenProtocolException()
+        }
     }
 
     /**
@@ -270,7 +285,11 @@ class OAuthHttpClient(
             val (code, body) = withContext(Dispatchers.IO) {
                 executeRaw(httpRequest).use { it.code to it.body.string() }
             }
-            if (code in 200..299) return json.decodeFromString(TokenResponse.serializer(), body)
+            if (code in 200..299) return try {
+                json.decodeFromString(TokenResponse.serializer(), body)
+            } catch (_: Exception) {
+                throw TokenProtocolException()
+            }
             val error = runCatching {
                 json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.contentOrNull
             }.getOrNull()
@@ -280,8 +299,8 @@ class OAuthHttpClient(
                 "access_denied" -> throw DeviceAuthorizationException(error, "Authorization was denied")
                 "expired_token" -> throw DeviceAuthorizationException(error, "Device code expired")
                 else -> throw DeviceAuthorizationException(
-                    error ?: "http_$code",
-                    "HTTP $code for ${request.tokenEndpoint}: ${body.take(300)}",
+                    safeOAuthError(error) ?: "http_$code",
+                    "OAuth device authorization failed (HTTP $code)",
                 )
             }
         }
@@ -304,9 +323,11 @@ class OAuthHttpClient(
 
     class TokenProtocolException : IOException("OAuth token response was malformed; sign in again")
 
-    class OAuthHttpException(val status: Int, val error: String?) : IOException(
-        "OAuth request failed (HTTP $status${error?.let { ", $it" } ?: ""})"
-    )
+    class OAuthHttpException(val status: Int, error: String?) : IOException(
+        "OAuth request failed (HTTP $status${safeOAuthError(error)?.let { ", $it" } ?: ""})"
+    ) {
+        val error: String? = safeOAuthError(error)
+    }
 
     suspend fun revokeToken(endpoint: String, clientId: String, refreshToken: String) = withContext(Dispatchers.IO) {
         val form = FormBody.Builder().add("token", refreshToken)
@@ -325,7 +346,7 @@ class OAuthHttpClient(
                     val value = (error as? JsonPrimitive)?.contentOrNull
                         ?: (error as? JsonObject)?.get("code")?.jsonPrimitive?.contentOrNull
                         ?: parsed["error_code"]?.jsonPrimitive?.contentOrNull
-                    value?.takeIf { it.matches(Regex("[a-zA-Z0-9_]{1,80}")) }
+                    safeOAuthError(value)
                 }.getOrNull()
                 throw OAuthHttpException(response.code, code)
             }
@@ -352,6 +373,17 @@ class OAuthHttpClient(
         Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
 
     private companion object {
+        // Unknown response values may be credential echoes, even when they look like identifier codes.
+        val OAUTH_ERROR_CODES = setOf(
+            "invalid_grant", "invalid_refresh_token", "token_expired", "refresh_token_expired",
+            "refresh_token_invalidated", "refresh_token_reused", "invalid_client",
+            "authorization_pending", "slow_down", "access_denied", "expired_token",
+            "invalid_request", "unauthorized_client", "unsupported_grant_type", "invalid_scope",
+            "invalid_token", "insufficient_scope", "server_error", "temporarily_unavailable",
+            "unsupported_response_type", "invalid_redirect_uri", "invalid_client_metadata",
+            "invalid_software_statement", "unapproved_software_statement",
+        )
+        fun safeOAuthError(value: String?): String? = value?.takeIf { it in OAUTH_ERROR_CODES }
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val DEVICE_CODE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code"
     }

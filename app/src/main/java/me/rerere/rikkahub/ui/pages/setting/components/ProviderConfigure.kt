@@ -39,6 +39,11 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.ProviderQuota
 import me.rerere.ai.provider.supportsQuota
 import me.rerere.ai.provider.providers.chatgpt.ChatGPTCacheDiagnostics
+import me.rerere.ai.provider.providers.chatgpt.CacheDiagnosticMode
+import me.rerere.rikkahub.data.datastore.SettingsStore
+import androidx.compose.material3.RadioButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.account.AccountLoginStatus
 import me.rerere.oauth.CustomTabsOAuthAuthorizationLauncher
@@ -478,6 +483,10 @@ private fun ProviderConfigureAccount(
 @Composable
 private fun ChatGPTPlanStatus(provider: ProviderSetting.ChatGPT) {
     val context = LocalContext.current
+    val settingsStore = koinInject<SettingsStore>()
+    val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var showDiagnosticModes by remember { mutableStateOf(false) }
     val credential = provider.credential
     val cacheDiagnosticExporter = rememberExporter(provider, ChatGPTCacheDiagnosticExportSerializer)
     var showWelcome by remember(provider.id) { mutableStateOf(false) }
@@ -529,6 +538,14 @@ private fun ChatGPTPlanStatus(provider: ProviderSetting.ChatGPT) {
             trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
         )
         item(
+            onClick = { showDiagnosticModes = true },
+            headlineContent = { Text(stringResource(R.string.setting_provider_page_cache_diagnostic_mode)) },
+            supportingContent = {
+                Text(stringResource(cacheDiagnosticModeLabel(settings.cacheDiagnosticMode)))
+            },
+            trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+        )
+        item(
             onClick = { cacheDiagnosticExporter.exportToFile() },
             leadingContent = { CardGroupIcon(HugeIcons.DashboardSpeed02) },
             headlineContent = { Text(stringResource(R.string.setting_provider_page_chatgpt_cache_diagnostics_export)) },
@@ -536,6 +553,44 @@ private fun ChatGPTPlanStatus(provider: ProviderSetting.ChatGPT) {
             trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
         )
     }
+    if (showDiagnosticModes) {
+        AlertDialog(
+            onDismissRequest = { showDiagnosticModes = false },
+            title = { Text(stringResource(R.string.setting_provider_page_cache_diagnostic_mode)) },
+            text = {
+                CardGroup(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    CacheDiagnosticMode.entries.forEach { mode ->
+                        item(
+                            onClick = {
+                                scope.launch { settingsStore.update { it.copy(cacheDiagnosticMode = mode) } }
+                                showDiagnosticModes = false
+                            },
+                            headlineContent = { Text(stringResource(cacheDiagnosticModeLabel(mode))) },
+                            supportingContent = {
+                                Text(stringResource(when (mode) {
+                                    CacheDiagnosticMode.OFF -> R.string.cache_diagnostic_off_desc
+                                    CacheDiagnosticMode.LIGHT -> R.string.cache_diagnostic_light_desc
+                                    CacheDiagnosticMode.FULL -> R.string.cache_diagnostic_full_desc
+                                }))
+                            },
+                            leadingContent = {
+                                RadioButton(selected = settings.cacheDiagnosticMode == mode, onClick = null)
+                            },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDiagnosticModes = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+}
+
+private fun cacheDiagnosticModeLabel(mode: CacheDiagnosticMode): Int = when (mode) {
+    CacheDiagnosticMode.OFF -> R.string.diagnostics_off
+    CacheDiagnosticMode.LIGHT -> R.string.cache_diagnostic_light
+    CacheDiagnosticMode.FULL -> R.string.cache_diagnostic_full
 }
 
 private object ChatGPTCacheDiagnosticExportSerializer : ExportSerializer<ProviderSetting.ChatGPT> {
@@ -715,11 +770,15 @@ private fun ProviderConfigureGoogle(
                 onCheckedChange = { onEdit(provider.copy(useServiceAccount = it)) },
                 headlineContent = { Text(stringResource(R.string.setting_provider_page_use_service_account)) },
             )
-        } else {
+        }
+        if (!provider.vertexAI || useServiceAccount) {
             switchItem(
                 checked = provider.useInteractionsApi,
                 onCheckedChange = { onEdit(provider.copy(useInteractionsApi = it)) },
                 headlineContent = { Text("Interactions API (Beta)") },
+                supportingContent = if (useServiceAccount) {
+                    { Text("Vertex AI only supports the global, us and eu locations; other locations use generateContent") }
+                } else null,
             )
         }
     }

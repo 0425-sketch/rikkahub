@@ -1,6 +1,6 @@
 package me.rerere.rikkahub.data.ai
 
-import android.util.Log
+import me.rerere.common.android.Logging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -69,7 +69,7 @@ class UsageRecorder(
         // Room 的 suspend 写入自己会切到后台线程
         scope.launch {
             runCatching { dao.insert(record) }
-                .onFailure { Log.w(TAG, "Failed to record usage", it) }
+                .onFailure { Logging.diagnostic(TAG, it) { "Failed to record usage" } }
         }
     }
 

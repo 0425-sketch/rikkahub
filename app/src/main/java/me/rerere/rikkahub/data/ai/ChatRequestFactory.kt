@@ -1,7 +1,7 @@
 package me.rerere.rikkahub.data.ai
 
+import me.rerere.common.android.Logging
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -151,7 +151,7 @@ class ChatRequestFactory(
         )
         val hooks = object : AgentHooks {
             override suspend fun prepareStep(messages: List<UIMessage>): StepRequest {
-                Log.i(TAG, "prepareStep: ${turn.model.id}")
+                Logging.diagnostic(TAG) { "prepareStep: ${turn.model.id}" }
                 return buildStep(turn, messages, processingStatus)
             }
 
@@ -206,7 +206,7 @@ class ChatRequestFactory(
         // 压缩指令不经过输入转换器，模板转换器会把其中的花括号当成模板语法
         val result = withRetry(
             policy = turn.settings.retryPolicy(),
-            onRetry = { Log.w(TAG, "Compression request failed, retrying in ${it.delay}", it.cause) },
+            onRetry = { Logging.diagnostic(TAG, it.cause) { "Compression request failed, retrying in ${it.delay}" } },
         ) {
             usageRecorder.wrap(
                 providerManager.getProviderByType(turn.providerSetting),

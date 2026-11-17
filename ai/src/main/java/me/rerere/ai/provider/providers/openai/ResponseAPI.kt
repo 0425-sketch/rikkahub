@@ -1,6 +1,5 @@
 package me.rerere.ai.provider.providers.openai
 
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -55,11 +54,13 @@ import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.configureSessionHeaders
 import me.rerere.ai.util.encodeBase64
 import me.rerere.ai.util.json
+import me.rerere.ai.util.logRequestBody
 import me.rerere.ai.util.mergeCustomBody
 import me.rerere.ai.util.mergeCustomHeaders
 import me.rerere.ai.util.parseErrorDetail
 import me.rerere.ai.util.stringSafe
 import me.rerere.common.http.await
+import me.rerere.common.android.Logging
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.common.http.jsonPrimitiveOrNull
 import me.rerere.common.http.sse.newEventSource
@@ -71,7 +72,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
-import okio.Buffer
 import kotlin.time.Clock
 
 private const val TAG = "ResponseAPI"
@@ -85,7 +85,9 @@ internal class ResponsesEndpoint(
     val url: String,
     val capabilities: ResponseProviderCapabilities = ResponseProviderCapabilities(),
     // Opt-in local observers run after final body validation/authentication. Never affect a request.
-    val observeRequest: ((Request, JsonObject) -> Unit)? = null,
+    val observeRequest: ((Request, JsonObject?) -> Unit)? = null,
+    val observationEnabled: () -> Boolean = { true },
+    val observeHttpStatus: ((Int) -> Unit)? = null,
     val observeCompletedResponse: ((JsonObject) -> Unit)? = null,
     // 构建请求时调用，负责请求头和鉴权；可挂起，以便先刷新 token
     val configureRequest: suspend Request.Builder.() -> Unit,
@@ -136,7 +138,8 @@ class ResponseAPI(
             .addHeader("Content-Type", "application/json")
             .build()
 
-        Log.i(TAG, "generateText: ${json.encodeToString(requestBody)}")
+        val diagnostic = Logging.requestScope(request)
+        if (endpoint.capabilities.logPayloads) logRequestBody(diagnostic, TAG, "generateText") { json.encodeToString(requestBody) }
 
         // await() waits for the response headers; reading the body can still block.
         client.newCall(request).await().use { response ->
@@ -145,7 +148,7 @@ class ResponseAPI(
             }
 
             val bodyStr = response.body.string()
-            Log.i(TAG, "generateText: $bodyStr")
+            if (endpoint.capabilities.logPayloads) diagnostic.diagnostic(TAG) { "generateText: $bodyStr" }
             val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
             parseResponseOutput(bodyJson)
         }
@@ -168,7 +171,8 @@ class ResponseAPI(
             .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
             .build()
 
-        if (endpoint.capabilities.logPayloads) Log.i(TAG, "streamText: ${json.encodeToString(requestBody)}")
+        val diagnostic = Logging.requestScope(request)
+        if (endpoint.capabilities.logPayloads) logRequestBody(diagnostic, TAG, "streamText") { json.encodeToString(requestBody) }
 
         val decoder = ResponseApiStreamDecoder(
             requireCompletedResponse = endpoint.capabilities.requireCompletedResponse,
@@ -179,7 +183,7 @@ class ResponseAPI(
         fun sendChunks(chunks: Iterable<StreamChunk>) {
             chunks.forEach { chunk ->
                 trySend(chunk).onFailure { e ->
-                    Log.w(TAG, "onEvent: chunk dropped (${e?.message})")
+                    diagnostic.diagnostic(TAG) { "onEvent: chunk dropped (${e?.message})" }
                 }
             }
         }
@@ -193,14 +197,13 @@ class ResponseAPI(
                 type: String?,
                 data: String
             ) {
-                if (endpoint.capabilities.logPayloads) Log.d(TAG, "onEvent: $id/$type $data")
+                if (endpoint.capabilities.logPayloads) diagnostic.diagnostic(TAG) { "onEvent: $id/$type $data" }
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
-                    if (result.completed && !observedCompletedResponse && endpoint.observeCompletedResponse != null) {
+                    if (result.completed && !observedCompletedResponse && endpoint.observeCompletedResponse != null && endpoint.observationEnabled()) {
                         observedCompletedResponse = true
                         runCatching {
-                            val event = json.parseToJsonElement(data) as? JsonObject
-                            (event?.get("response") as? JsonObject)?.let(endpoint.observeCompletedResponse)
+                            result.completedResponse?.let(endpoint.observeCompletedResponse)
                         }
                     }
                     sendChunks(result.chunks)
@@ -237,21 +240,18 @@ class ResponseAPI(
             }
         }
 
-        // Observe only opt-in endpoints at the last network interceptor, including auth retries.
-        // The shared pool/authenticator remain unchanged. Never consume one-shot/duplex bodies.
-        val observedClient = if (endpoint.observeRequest == null) client else client.newBuilder()
+        // Reuse the immutable JSON already serialized for this exact body, including auth retries.
+        // Never re-read or re-parse a request for diagnostics. If another interceptor replaces the
+        // body, record that the wire contents are unavailable instead of claiming a false match.
+        val observedClient = if (endpoint.observeRequest == null || !endpoint.observationEnabled()) client else client.newBuilder()
             .addNetworkInterceptor { chain ->
                 val wireRequest = chain.request()
-                runCatching {
-                    wireRequest.body?.takeUnless { it.isOneShot() || it.isDuplex() }?.let { body ->
-                        val buffer = Buffer()
-                        body.writeTo(buffer)
-                        (json.parseToJsonElement(buffer.readUtf8()) as? JsonObject)?.let { wireBody ->
-                            endpoint.observeRequest.invoke(wireRequest, wireBody)
-                        }
-                    }
+                if (endpoint.observationEnabled()) runCatching {
+                    endpoint.observeRequest.invoke(wireRequest, requestBody.takeIf { wireRequest.body === request.body })
                 }
-                chain.proceed(wireRequest)
+                chain.proceed(wireRequest).also { response ->
+                    if (endpoint.observationEnabled()) runCatching { endpoint.observeHttpStatus?.invoke(response.code) }
+                }
             }.build()
         val eventSource = observedClient.newEventSource(request, listener)
 
@@ -536,7 +536,7 @@ class ResponseAPI(
                                                     put("type", "input_image")
                                                     put("image_url", encoded.base64)
                                                 }.onFailure {
-                                                    it.printStackTrace()
+                                                    Logging.diagnostic(TAG, it) { "Response parsing failed" }
                                                     put("type", "input_text")
                                                     put("text", "Error: Failed to encode image to base64")
                                                 }
@@ -628,7 +628,7 @@ class ResponseAPI(
                                         put("type", "input_image")
                                         put("image_url", encodedImage.base64)
                                     }.onFailure {
-                                        it.printStackTrace()
+                                        Logging.diagnostic(TAG, it) { "Response parsing failed" }
                                         put("type", "input_text")
                                         put("text", "Error: Failed to encode image to base64")
                                     }
@@ -644,7 +644,7 @@ class ResponseAPI(
     }
 
     internal fun parseResponseOutput(jsonObject: JsonObject): TextGenerationResult {
-        println(jsonObject)
+        Logging.diagnostic(TAG) { "Parsed Responses output" }
         val outputs = jsonObject["output"]?.jsonArray ?: error("output not found")
         val parts = arrayListOf<UIMessagePart>()
 
