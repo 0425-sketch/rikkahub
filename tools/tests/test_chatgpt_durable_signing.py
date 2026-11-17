@@ -401,5 +401,68 @@ class SetupTokenRetirementTest(unittest.TestCase):
                     self.assertEqual((signing.SETUP_TOKEN_NAME,), call.args)
 
 
+class SigningEntrypointAuthorizationTest(unittest.TestCase):
+    """Exercise the real CLI gate before any identity, private material or storage access."""
+
+    def invoke(self, command, ref, *, repo=signing.REPO, actions="true", allowed=False, source="primary"):
+        identity = {"schema": 1, "application_id": signing.PACKAGE, "certificate_sha256": "a" * 64}
+        args = ["chatgpt-signing.py", command, "--identity", "pin.json", "--output", "public-output",
+                "--source", source, "--verification", "verified-delivery.json"]
+        with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": actions, "GITHUB_REPOSITORY": repo,
+                                          "GITHUB_REF": ref}, clear=True), \
+             mock.patch.object(signing.sys, "argv", args), \
+             mock.patch.object(signing, "read_identity", return_value=identity) as read_identity, \
+             mock.patch.object(signing, "GitHubSecrets") as storage, \
+             mock.patch.object(signing, "bootstrap") as bootstrap, \
+             mock.patch.object(signing, "restore") as restore, \
+             mock.patch.object(signing, "retire_setup_token") as retire:
+            dispatch = {"bootstrap": bootstrap, "restore": restore, "retire-setup-token": retire}
+            if allowed:
+                signing.main()
+                read_identity.assert_called_once_with(Path("pin.json"), require_certificate=command != "bootstrap")
+                dispatch[command].assert_called_once()
+                for name, operation in dispatch.items():
+                    if name != command:
+                        operation.assert_not_called()
+                if command == "restore":
+                    restore.assert_called_once_with(identity, Path("public-output"), source)
+                    storage.assert_not_called()
+                return
+            with self.assertRaisesRegex(signing.SigningError, "ENVIRONMENT"):
+                signing.main()
+            read_identity.assert_not_called()
+            storage.assert_not_called()
+            for operation in dispatch.values():
+                operation.assert_not_called()
+
+    def test_artifact_branch_can_only_restore_either_existing_signer(self):
+        for source in ("primary", "backup"):
+            with self.subTest(source=source):
+                self.invoke("restore", "refs/heads/build/personal-3.3.0", source=source, allowed=True)
+
+    def test_artifact_branch_cannot_bootstrap_or_retire_secrets(self):
+        for command in ("bootstrap", "retire-setup-token"):
+            with self.subTest(command=command):
+                self.invoke(command, "refs/heads/build/personal-3.3.0")
+
+    def test_original_custom_branch_keeps_existing_command_permissions(self):
+        for command in ("bootstrap", "restore", "retire-setup-token"):
+            with self.subTest(command=command):
+                self.invoke(command, "refs/heads/custom-3.2.0", allowed=True)
+
+    def test_unrelated_branches_tags_and_pull_requests_never_reach_signer(self):
+        for ref in ("refs/heads/master", "refs/heads/build/personal-3.3.0-other",
+                    "refs/tags/build/personal-3.3.0", "refs/pull/1/merge", ""):
+            for command in ("bootstrap", "restore", "retire-setup-token"):
+                with self.subTest(ref=ref, command=command):
+                    self.invoke(command, ref)
+
+    def test_expected_ref_still_requires_correct_repository_and_actions(self):
+        for ref in ("refs/heads/custom-3.2.0", "refs/heads/build/personal-3.3.0"):
+            with self.subTest(ref=ref):
+                self.invoke("restore", ref, repo="another-owner/rikkahub")
+                self.invoke("restore", ref, actions="false")
+
+
 if __name__ == "__main__":
     unittest.main()
