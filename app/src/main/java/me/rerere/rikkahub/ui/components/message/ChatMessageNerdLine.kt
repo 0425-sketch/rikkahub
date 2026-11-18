@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.ui.components.message
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,6 +42,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import kotlinx.datetime.toJavaLocalDateTime
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.ui.UIMessage
 import me.rerere.hugeicons.HugeIcons
@@ -69,8 +71,18 @@ fun ChatMessageNerdLine(
     generating: Boolean = false,
 ) {
     val settings = LocalSettings.current
+    if (!settings.displaySetting.showTokenUsage) return
     val usage = message.usage
-    if (!settings.displaySetting.showTokenUsage || usage == null) return
+    if (usage == null) {
+        val label = message.missingUsageLabel(generating) ?: return
+        Text(
+            text = stringResource(label),
+            modifier = modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+        )
+        return
+    }
 
     val stats = remember(message, generating) { message.nerdStats(usage, generating) }
     // 消息里的模型快照不带上下文窗口，只能从设置里按 ID 找；模型被删了就不显示窗口大小
@@ -336,6 +348,14 @@ fun StatsItem(
 }
 
 internal enum class UsageValueStatus { Reported, Pending, Unknown }
+
+@StringRes
+internal fun UIMessage.missingUsageLabel(generating: Boolean): Int? = when {
+    role != MessageRole.ASSISTANT -> null
+    generating -> R.string.cache_usage_pending
+    lastUsage != null || stepCount != null -> R.string.chat_message_usage_not_reported
+    else -> null
+}
 
 internal data class NerdStats(
     val total: TokenUsage,

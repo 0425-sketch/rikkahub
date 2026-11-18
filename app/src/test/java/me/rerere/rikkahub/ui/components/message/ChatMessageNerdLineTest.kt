@@ -6,7 +6,9 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.core.sum
 import me.rerere.ai.ui.UIMessage
+import me.rerere.rikkahub.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ChatMessageNerdLineTest {
@@ -100,5 +102,20 @@ class ChatMessageNerdLineTest {
         assertEquals(UsageValueStatus.Reported, stats.cacheReadStatus)
         assertEquals(50_100, stats.contextTokens)
         assertEquals(partialTotal, stats.total)
+    }
+
+    @Test
+    fun `first step without a usage snapshot shows pending only while it is generating`() {
+        val first = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = emptyList(),
+            lastUsage = TokenUsage(),
+            stepCount = 1,
+        )
+        assertNull(first.usage)
+        assertEquals(R.string.cache_usage_pending, first.missingUsageLabel(generating = true))
+        assertEquals(R.string.chat_message_usage_not_reported, first.missingUsageLabel(generating = false))
+        assertNull(first.copy(lastUsage = null, stepCount = null).missingUsageLabel(generating = false))
+        assertNull(UIMessage.user("hello").missingUsageLabel(generating = true))
     }
 }

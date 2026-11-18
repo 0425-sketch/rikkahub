@@ -243,66 +243,49 @@ class ProviderAccountManager internal constructor(
             val credential = latest.credential ?: error("${latest.name}: not signed in")
             if (!credential.needsRefresh(rejectedAccessToken)) return@withLock credential
 
-            val refreshToken = credential.refreshToken
-            if (refreshToken == null && credential.pendingRefresh == null) {
-                error("${latest.name}: session expired, please sign in again")
+            if (latest is ProviderSetting.ChatGPT) {
+                check(credential.isOfficialChatGPT) { "此 ChatGPT 连接需要重新授权官方登录" }
             }
-            var unverifiedRefresh = credential.pendingRefresh
-            var successfulChatGPTTokenResponse = unverifiedRefresh != null
-            val refreshed = try {
-                when (latest) {
-                    is ProviderSetting.ChatGPT -> {
-                        check(credential.isOfficialChatGPT) { "此 ChatGPT 连接需要重新授权官方登录" }
-                        val clientId = credential.clientId!!
-                        val pending = unverifiedRefresh
-                        val token = if (pending != null) OAuthHttpClient.TokenResponse(
-                            pending.accessToken, pending.tokenType, pending.expiresIn,
-                            pending.refreshToken, pending.idToken, pending.scope,
-                        ) else oauthClient.refreshToken(ChatGPTAuth.refreshRequest(clientId, refreshToken!!))
-                        successfulChatGPTTokenResponse = true
-                        unverifiedRefresh = pending ?: ChatGPTPendingRefresh(
+            val pending = credential.pendingRefresh.takeIf { latest is ProviderSetting.ChatGPT }
+            val token = if (pending == null) requestRefresh(latest, credential) else OAuthHttpClient.TokenResponse(
+                pending.accessToken, pending.tokenType, pending.expiresIn, pending.refreshToken, pending.idToken, pending.scope,
+            )
+            val receivedAt = pending?.receivedAt ?: System.currentTimeMillis()
+            var expected = credential
+            val refreshed = when (latest) {
+                is ProviderSetting.ChatGPT -> {
+                    val clientId = credential.clientId!!
+                    if (token.idToken != null) {
+                        // The issuer may have consumed the old refresh token. Persist the untrusted
+                        // response before verification can suspend on JWKS, including after I/O retries.
+                        val checkpoint = pending ?: ChatGPTPendingRefresh(
                             token.accessToken, token.refreshToken, token.idToken, token.tokenType,
-                            token.expiresIn, token.scope, System.currentTimeMillis(),
+                            token.expiresIn, token.scope, receivedAt,
                         )
+                        expected = credential.copy(pendingRefresh = checkpoint)
+                        replaceRefreshCredential(latest, credential, expected)
+                    }
+                    try {
                         val identity = token.idToken?.let {
                             idTokenVerifier.verify(it, clientId, nonce = null, expectedSubject = credential.subject,
                                 expectedNonce = credential.idTokenNonce)
                         } ?: ChatGPTVerifiedIdentity(
                             credential.issuer!!, credential.subject!!, credential.email, credential.accountId, credential.plan,
                         )
-                        ChatGPTAuth.toCredential(token, clientId, identity, credential, now = unverifiedRefresh!!.receivedAt)
+                        ChatGPTAuth.toCredential(token, clientId, identity, credential, now = receivedAt)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: ChatGPTSigningKeysUnavailableException) {
+                        error("OpenAI 签名密钥暂时不可用；已安全保存待验证的刷新结果，请稍后重试。")
+                    } catch (e: Exception) {
+                        replaceRefreshCredential(latest, expected, null)
+                        error("ChatGPT 会话已失效，请重新登录授权")
                     }
-
-                    is ProviderSetting.Grok -> GrokAuth.toCredential(
-                        token = oauthClient.refreshToken(GrokAuth.refreshRequest(refreshToken!!)),
-                        previous = credential,
-                    )
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                if (latest is ProviderSetting.ChatGPT && e is ChatGPTSigningKeysUnavailableException && unverifiedRefresh != null) {
-                    // The refresh token may already have rotated. Persist the response without trusting it,
-                    // then resume validation (not another token exchange) after restart/network recovery.
-                    replaceCredential(latest.id, credential, credential.copy(pendingRefresh = unverifiedRefresh))
-                    error("OpenAI 签名密钥暂时不可用；已安全保存待验证的刷新结果，请稍后重试。")
-                }
-                if (latest is ProviderSetting.ChatGPT && (successfulChatGPTTokenResponse ||
-                    e is OAuthHttpClient.TokenProtocolException ||
-                    (e is OAuthHttpClient.OAuthHttpException && e.error in ChatGPTAuth.TERMINAL_REFRESH_ERRORS))) {
-                    replaceCredential(latest.id, credential, null)
-                    error("ChatGPT 会话已失效，请重新登录授权")
-                }
-                if (e is OAuthHttpClient.OAuthHttpException && e.error == "invalid_client") {
-                    error("ChatGPT 客户端注册无效，请检查连接配置")
-                }
-                // A temporary network error never erases the renewable session.
-                error("账号暂时无法刷新，请检查网络后重试；已保留登录信息")
+                is ProviderSetting.Grok -> GrokAuth.toCredential(token, credential)
             }
             // 刷新期间用户可能退出或换了账号，这时结果作废，不能把旧会话写回去
-            if (!replaceCredential(latest.id, expected = credential, credential = refreshed)) {
-                error("${latest.name}: sign-in changed during refresh, please try again")
-            }
+            replaceRefreshCredential(latest, expected, refreshed)
             check(setting.id !in signingOut) { "正在退出账号" }
             refreshed
         }.let { refreshed ->
@@ -312,6 +295,29 @@ class ProviderAccountManager internal constructor(
                 check(allowExpiredPendingRetry) { "ChatGPT 返回的令牌已过期，请稍后重试" }
                 refreshIfNeeded(setting, null, allowExpiredPendingRetry = false)
             } else refreshed
+        }
+    }
+
+    private suspend fun requestRefresh(account: ProviderSetting.Account, credential: OAuthCredential): OAuthHttpClient.TokenResponse {
+        val refreshToken = credential.refreshToken ?: error("${account.name}: session expired, please sign in again")
+        val request = when (account) {
+            is ProviderSetting.ChatGPT -> ChatGPTAuth.refreshRequest(credential.clientId!!, refreshToken)
+            is ProviderSetting.Grok -> GrokAuth.refreshRequest(refreshToken)
+        }
+        try {
+            return oauthClient.refreshToken(request)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (account is ProviderSetting.ChatGPT && (e is OAuthHttpClient.TokenProtocolException ||
+                (e is OAuthHttpClient.OAuthHttpException && e.error in ChatGPTAuth.TERMINAL_REFRESH_ERRORS))) {
+                replaceRefreshCredential(account, credential, null)
+                error("ChatGPT 会话已失效，请重新登录授权")
+            }
+            if (e is OAuthHttpClient.OAuthHttpException && e.error == "invalid_client") {
+                error("${account.name} 客户端注册无效，请检查连接配置")
+            }
+            error("账号暂时无法刷新，请检查网络后重试；已保留登录信息")
         }
     }
 
@@ -419,17 +425,17 @@ class ProviderAccountManager internal constructor(
         }
     }
 
-    /** 设置里的凭据仍是 [expected] 时才替换，返回是否替换了 */
-    private suspend fun replaceCredential(
-        providerId: Uuid,
+    /** 刷新只写回发起操作时那一份，或本轮轮换后已落盘的待验证快照。 */
+    private suspend fun replaceRefreshCredential(
+        account: ProviderSetting.Account,
         expected: OAuthCredential,
         credential: OAuthCredential?,
-    ): Boolean {
+    ) {
         var replaced = false
         settingsStore.update { old ->
             old.copy(
                 providers = old.providers.map { provider ->
-                    if (provider.id == providerId && provider is ProviderSetting.Account &&
+                    if (provider.id == account.id && provider is ProviderSetting.Account &&
                         provider.credential == expected) {
                         replaced = true
                         provider.withCredential(credential)
@@ -439,13 +445,17 @@ class ProviderAccountManager internal constructor(
                 }
             )
         }
-        return replaced
+        check(replaced) { "${account.name}: sign-in changed during refresh, please try again" }
     }
 
     // 刚被服务端拒绝，或者快过期了
-    private fun OAuthCredential.needsRefresh(rejectedAccessToken: String?): Boolean =
-        pendingRefresh != null || accessToken == rejectedAccessToken ||
-            (expiresAt > 0 && System.currentTimeMillis() >= expiresAt - TOKEN_REFRESH_LEEWAY_MS)
+    private fun OAuthCredential.needsRefresh(rejectedAccessToken: String?): Boolean {
+        if (pendingRefresh != null || accessToken == rejectedAccessToken) return true
+        val leeway = if (isOfficialChatGPT && savedAt > 0 && expiresAt > savedAt) {
+            minOf(TOKEN_REFRESH_LEEWAY_MS, (expiresAt - savedAt) / 10)
+        } else TOKEN_REFRESH_LEEWAY_MS
+        return expiresAt > 0 && System.currentTimeMillis() >= expiresAt - leeway
+    }
 
     private fun findAccount(providerId: Uuid): ProviderSetting.Account? =
         settingsStore.settingsFlow.value.providers

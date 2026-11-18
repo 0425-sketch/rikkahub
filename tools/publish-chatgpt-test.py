@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 201
-VERSION_NAME = "3.3.0-personal.1"
+VERSION_CODE = 202
+VERSION_NAME = "3.3.0-personal.2"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 
@@ -202,7 +202,7 @@ def main():
     }
     restoration_file = args.output / "signing-restoration-verification.json"
     restoration_file.write_text(json.dumps(restoration, indent=2) + "\n")
-    tag = f"custom-3.3.0-personal-{source_sha[:12]}-{run_id}-{attempt}"
+    tag = f"custom-{VERSION_NAME.split('-personal.')[0]}-personal-{source_sha[:12]}-{run_id}-{attempt}"
     metadata["tag"] = tag
     metadata["actions_url"] = f"https://github.com/{REPO}/actions/runs/{run_id}"
     metadata["signing_persistence"] = "durable-primary-and-backup-secrets"
@@ -216,19 +216,13 @@ def main():
     provenance.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     notes = args.output / "release-notes.txt"
     notes.write_text(
-        "RikkaHub 3.3.0 — 自用升级与诊断优化版\n\n"
-        f"源码： https://github.com/{REPO}/commit/{source_sha}\n"
-        f"Actions： {metadata['actions_url']}\n\n"
-        "ARM64，Android 8.0 及以上。沿用RikkaHub 3.2.0自用personal版的包名与固定签名，版本号递增。\n"
-        "长期签名已保存为GitHub Actions加密主用与恢复副本，并在两个独立runner中恢复、构建和核验证书一致。\n"
-        "恢复副本位于同一仓库的Secret存储，不是跨平台灾备。后续此包名更新固定复用该证书。\n\n"
-        "已安装RikkaHub 自用的用户无需再次迁移或重新登录。首次从更旧的ChatGPT测试版迁移，仍可用设置→数据备份→本地导出/导入ZIP后授权。\n"
-        "整合正式tag 3.3.0，保留新版SIWC、稳定session_id及真实缓存用量统计。\n"
-        "改进日志脱敏与关闭选项、缓存诊断分级和开销、分叉数据库迁移、Gemini签名兼容及工具参数累积。\n"
-        "正常用量统计保留未知与真实零值的区别；关闭诊断不会改变服务端缓存策略。\n"
-        "套餐原生生图仍不支持；未实现应用内真实套餐余额。\n\n"
-        f"APK SHA-256: `{metadata['apk_sha256']}`\n"
-        f"证书 SHA-256: `{metadata['certificate_sha256']}`\n",
+        f"RikkaHub {VERSION_NAME}\n\n"
+        "这个版本修正了 ChatGPT 模型能力、令牌刷新、自动压缩提示和流式工具处理。\n"
+        "更新提醒现在读取本仓库的自用版本，可以在 App 内下载，完成后手动安装。\n\n"
+        "从旧自用版升级，请先下载下方 ARM64 APK，直接覆盖安装，保留聊天和设置。\n\n"
+        f"[构建源码](https://github.com/{REPO}/commit/{source_sha}) · [构建记录]({metadata['actions_url']})\n\n"
+        f"APK SHA-256 `{metadata['apk_sha256']}`\n\n"
+        f"<!-- rikkahub-personal-version-code: {VERSION_CODE} -->\n",
         encoding="utf-8",
     )
     delivery.gh([

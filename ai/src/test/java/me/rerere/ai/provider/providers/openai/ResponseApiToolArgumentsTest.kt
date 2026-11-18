@@ -12,6 +12,37 @@ import org.junit.Test
 
 class ResponseApiToolArgumentsTest {
     @Test
+    fun `ordinary mode forwards deltas and uses a done snapshot only for a call with no input`() {
+        val decoder = ResponseApiStreamDecoder()
+        val input = "{\"text\":\"" + "x".repeat(128 * 1024) + "\"}"
+        val initial = input.take(9)
+        val rest = input.drop(9)
+        val events = buildList {
+            add(item("response.output_item.added", 0, initial))
+            add(item("response.output_item.added", 1, ""))
+            rest.chunked(1024).forEach { add(arguments("response.function_call_arguments.delta", 0, it)) }
+            add(arguments("response.function_call_arguments.done", 1, "{}"))
+            add(arguments("response.function_call_arguments.done", 0, "{\"different\":true}"))
+            add(item("response.output_item.done", 0, input))
+            add(item("response.output_item.done", 1, "{}"))
+        }
+
+        val chunks = events.flatMap { decoder.accept(it).chunks }
+        val expected = buildList {
+            add(StreamChunk.ToolCallStart("call_0", "tool_0"))
+            add(StreamChunk.ToolCallDelta("call_0", inputDelta = initial))
+            add(StreamChunk.ToolCallStart("call_1", "tool_1"))
+            rest.chunked(1024).forEach { add(StreamChunk.ToolCallDelta("call_0", inputDelta = it)) }
+            add(StreamChunk.ToolCallDelta("call_1", inputDelta = "{}"))
+            add(StreamChunk.ToolCallEnd("call_1"))
+            add(StreamChunk.ToolCallEnd("call_0"))
+        }
+        assertEquals(expected, chunks)
+        assertTrue(decoder.accept(SseEvent(data = "[DONE]")).completed)
+        assertTrue(decoder.onClosed().isEmpty())
+    }
+
+    @Test
     fun `large parallel tool inputs preserve every delta and validate both terminal events`() {
         val decoder = decoder()
         val inputs = listOf(

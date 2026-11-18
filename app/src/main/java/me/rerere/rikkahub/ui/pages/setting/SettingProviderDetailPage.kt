@@ -61,6 +61,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -85,6 +86,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.BuiltInToolUnavailableReason
+import me.rerere.ai.provider.ChatGPTCatalogField
 import me.rerere.ai.provider.builtInToolSupport
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
@@ -112,6 +114,10 @@ import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.Tools
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.account.preserveCredential
+import me.rerere.rikkahub.data.datastore.forCatalogSelection
+import me.rerere.rikkahub.data.datastore.useAccountCapabilities
+import me.rerere.rikkahub.data.datastore.withCatalogMetadata
+import me.rerere.rikkahub.data.datastore.withChatGPTModelCatalog
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.ai.ModelAbilityTag
 import me.rerere.rikkahub.ui.components.ai.ModelModalityTag
@@ -278,9 +284,12 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                     }
 
                     ProviderDetailTab.MODELS -> {
-                        SettingProviderModelPage(
-                            provider = provider,
-                            onEdit = onEdit
+                        ModelList(
+                            providerSetting = provider,
+                            onUpdateProvider = onEdit,
+                            onCatalogLoaded = { requested, models ->
+                                vm.updateSettings { it.withChatGPTModelCatalog(requested, models) }
+                            },
                         )
                     }
 
@@ -446,17 +455,6 @@ private fun SettingProviderConfigPage(
 }
 
 @Composable
-private fun SettingProviderModelPage(
-    provider: ProviderSetting,
-    onEdit: (ProviderSetting) -> Unit
-) {
-    ModelList(
-        providerSetting = provider,
-        onUpdateProvider = onEdit
-    )
-}
-
-@Composable
 private fun SettingProviderAdvancedPage(
     provider: ProviderSetting,
     onEdit: (ProviderSetting) -> Unit
@@ -481,26 +479,32 @@ private fun SettingProviderAdvancedPage(
 @Composable
 private fun ModelList(
     providerSetting: ProviderSetting,
-    onUpdateProvider: (ProviderSetting) -> Unit
+    onUpdateProvider: (ProviderSetting) -> Unit,
+    onCatalogLoaded: (ProviderSetting.ChatGPT, List<Model>) -> Unit,
 ) {
     val providerManager = koinInject<ProviderManager>()
     // 增删、排序已添加的模型不影响远端列表，去掉 models 再作为 key，避免每次编辑都重新请求
     val listKey = remember(providerSetting) { providerSetting.copyProvider(models = emptyList()) }
     var refreshCount by remember { mutableIntStateOf(0) }
-    val remoteModels by produceState(RemoteModels(), listKey, refreshCount) {
-        value = value.copy(loading = true, error = null)
-        value = try {
-            val models = providerManager.getProviderByType(listKey)
-                .listModels(listKey)
-                .sortedBy { it.modelId }
-            RemoteModels(models = models)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // 失败时保留上次拿到的列表
-            value.copy(loading = false, error = e)
+    val remoteModels by key(listKey) {
+        produceState(RemoteModels(), refreshCount) {
+            value = value.copy(loading = true, error = null)
+            value = try {
+                val models = providerManager.getProviderByType(listKey)
+                    .listModels(listKey)
+                    .sortedBy { it.modelId }
+                if (listKey is ProviderSetting.ChatGPT) onCatalogLoaded(listKey, models)
+                RemoteModels(models = models)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Manual refresh may keep the last list for this provider configuration.
+                value.copy(loading = false, error = e)
+            }
         }
+    }
+    val accountCatalog = remember(listKey, remoteModels.models) {
+        if (listKey is ProviderSetting.ChatGPT) remoteModels.models.associateBy { it.modelId } else emptyMap()
     }
     var expanded by rememberSaveable { mutableStateOf(true) }
     val lazyListState = rememberLazyListState()
@@ -536,11 +540,13 @@ private fun ModelList(
                     ) { isDragging ->
                         ModelCard(
                             model = item,
+                            accountCatalog = accountCatalog,
                             onDelete = {
                                 onUpdateProvider(providerSetting.delModel(item))
                             },
                             onEdit = { editedModel ->
-                                onUpdateProvider(providerSetting.editModel(editedModel))
+                                val edited = accountCatalog[editedModel.modelId]?.let(editedModel::withCatalogMetadata) ?: editedModel
+                                onUpdateProvider(providerSetting.editModel(edited))
                             },
                             parentProvider = providerSetting,
                             modifier = longPressReorder(isDragging),
@@ -558,6 +564,7 @@ private fun ModelList(
         ) {
             AddModelButton(
                 remoteModels = remoteModels,
+                accountCatalog = accountCatalog,
                 onRefresh = { refreshCount++ },
                 selectedModels = providerSetting.models,
                 onAddModel = {
@@ -579,23 +586,23 @@ private fun ModelSettingsForm(
     model: Model,
     onModelChange: (Model) -> Unit,
     isEdit: Boolean,
-    parentProvider: ProviderSetting? = null
+    parentProvider: ProviderSetting? = null,
+    accountCatalog: Map<String, Model>,
 ) {
     val pagerState = rememberPagerState { ModelFormTab.entries.size }
 
     fun setModelId(id: String) {
-        val inputModality = ModelRegistry.MODEL_INPUT_MODALITIES.getData(id)
-        val outputModality = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(id)
-        val abilities = ModelRegistry.MODEL_ABILITIES.getData(id)
-        onModelChange(
-            model.copy(
-                modelId = id,
-                displayName = id,
-                inputModalities = inputModality,
-                outputModalities = outputModality,
-                abilities = abilities
-            )
+        val renamed = model.copy(modelId = id, displayName = id)
+        val suggested = accountCatalog[id] ?: renamed.copy(
+            inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(id),
+            outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(id),
+            abilities = ModelRegistry.MODEL_ABILITIES.getData(id),
+            chatGPTCapabilities = null,
+            contextLength = if (parentProvider is ProviderSetting.ChatGPT) {
+                ModelRegistry.MODEL_CONTEXT_LENGTH.getData(id)?.takeIf { it > 0 } ?: 0
+            } else model.contextLength,
         )
+        onModelChange(if (parentProvider is ProviderSetting.ChatGPT) renamed.withCatalogMetadata(suggested) else suggested)
     }
 
     Column {
@@ -660,11 +667,21 @@ private fun ModelSettingsForm(
                             model = model,
                             inputModalities = model.inputModalities,
                             onUpdateInputModalities = {
-                                onModelChange(model.copy(inputModalities = it))
+                                onModelChange(
+                                    model.copy(
+                                        inputModalities = it,
+                                        chatGPTCatalogFields = model.chatGPTCatalogFields - ChatGPTCatalogField.INPUT_MODALITIES,
+                                    )
+                                )
                             },
                             outputModalities = model.outputModalities,
                             onUpdateOutputModalities = {
-                                onModelChange(model.copy(outputModalities = it))
+                                onModelChange(
+                                    model.copy(
+                                        outputModalities = it,
+                                        chatGPTCatalogFields = model.chatGPTCatalogFields - ChatGPTCatalogField.OUTPUT_MODALITIES,
+                                    )
+                                )
                             }
                         )
 
@@ -672,14 +689,32 @@ private fun ModelSettingsForm(
                             ModalAbilitySelector(
                                 abilities = model.abilities,
                                 onUpdateAbilities = {
-                                    onModelChange(model.copy(abilities = it))
+                                    onModelChange(
+                                        model.copy(
+                                            abilities = it,
+                                            chatGPTCatalogFields = model.chatGPTCatalogFields - ChatGPTCatalogField.ABILITIES,
+                                        )
+                                    )
                                 }
                             )
 
+                            val listed = accountCatalog[model.modelId]
+                            if (listed != null && model.providerOverwrite == null &&
+                                !model.chatGPTCatalogFields.containsAll(ChatGPTCatalogField.capabilities)
+                            ) {
+                                TextButton(onClick = { onModelChange(model.useAccountCapabilities(listed)) }) {
+                                    Text(stringResource(R.string.setting_provider_page_use_account_capabilities))
+                                }
+                            }
                             ModelContextLengthSelector(
                                 contextLength = model.contextLength,
                                 onUpdateContextLength = {
-                                    onModelChange(model.copy(contextLength = it))
+                                    onModelChange(
+                                        model.copy(
+                                            contextLength = it,
+                                            chatGPTCatalogFields = model.chatGPTCatalogFields - ChatGPTCatalogField.CONTEXT_LENGTH,
+                                        )
+                                    )
                                 }
                             )
                         }
@@ -747,6 +782,7 @@ private data class RemoteModels(
 @Composable
 private fun AddModelButton(
     remoteModels: RemoteModels,
+    accountCatalog: Map<String, Model>,
     onRefresh: () -> Unit,
     selectedModels: List<Model>,
     expanded: Boolean,
@@ -766,20 +802,10 @@ private fun AddModelButton(
     ) {
         ModelPicker(
             remoteModels = remoteModels,
+            parentProvider = parentProvider,
             onRefresh = onRefresh,
             selectedModels = selectedModels,
-            onModelSelected = { model ->
-                val inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(model.modelId)
-                val outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(model.modelId)
-                val abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId)
-                onAddModel(
-                    model.copy(
-                        inputModalities = inputModalities,
-                        outputModalities = outputModalities,
-                        abilities = abilities
-                    )
-                )
-            },
+            onModelSelected = onAddModel,
             onModelDeselected = { model ->
                 onRemoveModel(model)
             },
@@ -788,13 +814,7 @@ private fun AddModelButton(
                     parentProvider.copyProvider(
                         models = parentProvider.models + it.filter { model ->
                             parentProvider.models.none { existing -> existing.modelId == model.modelId }
-                        }.map { model ->
-                            model.copy(
-                                inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(model.modelId),
-                                outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(model.modelId),
-                                abilities = ModelRegistry.MODEL_ABILITIES.getData(model.modelId)
-                            )
-                        }
+                        }.map { model -> model.forCatalogSelection(parentProvider) }
                     )
                 )
             },
@@ -811,7 +831,10 @@ private fun AddModelButton(
 
         Button(
             onClick = {
-                dialogState.open(Model())
+                dialogState.open(
+                    if (parentProvider is ProviderSetting.ChatGPT) Model(contextLength = 0, chatGPTCatalogFields = ChatGPTCatalogField.all)
+                    else Model(),
+                )
             }
         ) {
             Row(
@@ -877,7 +900,8 @@ private fun AddModelButton(
                             model = modelState,
                             onModelChange = { dialogState.currentState = it },
                             isEdit = false,
-                            parentProvider = parentProvider
+                            parentProvider = parentProvider,
+                            accountCatalog = accountCatalog,
                         )
                     }
 
@@ -911,6 +935,7 @@ private fun AddModelButton(
 @Composable
 private fun ModelPicker(
     remoteModels: RemoteModels,
+    parentProvider: ProviderSetting,
     onRefresh: () -> Unit,
     selectedModels: List<Model>,
     onModelSelected: (Model) -> Unit,
@@ -1012,6 +1037,7 @@ private fun ModelPicker(
                     contentPadding = PaddingValues(8.dp),
                 ) {
                     itemsIndexed(filteredModels) { index, it ->
+                        val selection = remember(it, parentProvider::class) { it.forCatalogSelection(parentProvider) }
                         Surface(
                             shape = cardGroupItemShape(index, filteredModels.size),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1044,19 +1070,8 @@ private fun ModelPicker(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
-                                        val modelMeta = remember(it) {
-                                            it.copy(
-                                                inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(it.modelId),
-                                                outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(it.modelId),
-                                                abilities = ModelRegistry.MODEL_ABILITIES.getData(it.modelId),
-                                            )
-                                        }
-                                        ModelModalityTag(
-                                            model = modelMeta,
-                                        )
-                                        ModelAbilityTag(
-                                            model = modelMeta,
-                                        )
+                                        ModelModalityTag(model = selection)
+                                        ModelAbilityTag(model = selection)
                                     }
                                 }
                                 val added = selectedModels.any { model -> model.modelId == it.modelId }
@@ -1064,7 +1079,7 @@ private fun ModelPicker(
                                     checked = added,
                                     onCheckedChange = { checked ->
                                         if (checked) {
-                                            onModelSelected(it)
+                                            onModelSelected(selection)
                                         } else {
                                             // 从selectedModels中计算出要删除的model，因为删除需要id匹配，而不是ModelId
                                             onModelDeselected(selectedModels.firstOrNull { model -> model.modelId == it.modelId }
@@ -1234,7 +1249,7 @@ private fun ModelContextLengthSelector(
 ) {
     var custom by remember { mutableStateOf(contextLength !in ContextLengthPresets) }
     // 输入过程中允许为空，只有合法的正整数才写回模型
-    var customText by remember { mutableStateOf(contextLength.toString()) }
+    var customText by remember(contextLength) { mutableStateOf(contextLength.takeIf { it > 0 }?.toString().orEmpty()) }
 
     Text(
         stringResource(R.string.setting_provider_page_context_length),
@@ -1266,9 +1281,10 @@ private fun ModelContextLengthSelector(
             },
             modifier = Modifier.fillMaxWidth(),
             suffix = { Text("tokens") },
+            placeholder = { if (contextLength <= 0) Text(stringResource(R.string.cache_usage_context_unknown)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
-            isError = (customText.toIntOrNull() ?: 0) <= 0,
+            isError = customText.isNotEmpty() && (customText.toIntOrNull() ?: 0) <= 0,
         )
     }
 }
@@ -1276,6 +1292,7 @@ private fun ModelContextLengthSelector(
 @Composable
 private fun ModelCard(
     model: Model,
+    accountCatalog: Map<String, Model>,
     modifier: Modifier = Modifier,
     onDelete: () -> Unit,
     onEdit: (Model) -> Unit,
@@ -1337,7 +1354,8 @@ private fun ModelCard(
                             model = editingModel,
                             onModelChange = { dialogState.currentState = it },
                             isEdit = true,
-                            parentProvider = parentProvider
+                            parentProvider = parentProvider,
+                            accountCatalog = accountCatalog,
                         )
                     }
 

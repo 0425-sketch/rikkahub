@@ -22,7 +22,19 @@ data class Model(
     val contextLength: Int = 1_000_000,
     // Optional account catalog metadata; other provider routes do not use it.
     val chatGPTCapabilities: ChatGPTModelCapabilities? = null,
+    // Legacy settings have no provenance, so their editable fields keep the user's saved values.
+    val chatGPTCatalogFields: Set<ChatGPTCatalogField> = emptySet(),
 )
+
+@Serializable
+enum class ChatGPTCatalogField {
+    INPUT_MODALITIES, OUTPUT_MODALITIES, ABILITIES, CONTEXT_LENGTH;
+
+    companion object {
+        val capabilities = setOf(INPUT_MODALITIES, OUTPUT_MODALITIES, ABILITIES)
+        val all = capabilities + CONTEXT_LENGTH
+    }
+}
 
 @Serializable
 data class ChatGPTModelCapabilities(

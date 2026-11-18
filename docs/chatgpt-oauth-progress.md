@@ -1,5 +1,11 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
+## 自用 3.3.0-personal.2 更新准备
+
+版本码 202。已有 personal.1 仍使用上游更新源，首次需从本 fork 的 Release 手动下载 APK 覆盖安装。自 personal.2 起，聊天抽屉的更新提示按已发布 personal 构建的 Android 版本码判断，支持预发布。点下载后使用系统下载管理器，完成后手动安装。继续沿用原包名与固定证书。
+
+ChatGPT 模型目录供单选、全选和刷新使用。旧模型的能力来源未被记录，可在模型编辑页选“使用账号目录的输入、输出和模型能力”，保留 UUID、窗口和聊天引用。刷新令牌会在联网验签前保存待验证结果。自动压缩入口指出缺失的窗口或本轮输入用量，等待中的流式统计单独显示。普通 Responses 路由的工具参数只保留实际使用的状态。
+
 ## 最新交付：3.3.0-personal.1（2026-11-17 UTC）
 
 **用户授权的Release已发布，公开下载与本地独立验签全部完成。** 构建源码 `4ac14e80bb2400802907cdb7747befeb24874bb1`，Actions `44074740868` 全部成功。应用代码整合正式tag `3.3.0`；完整变更、迁移、测试和性能记录见 [3.3.0升级报告](custom-3.3.0-upgrade.md)。
@@ -18,7 +24,7 @@
 
 **缓存专项基准已保留：** 此前已调查官方 DevKit issue 9 与 OpenClaw issue 197532，完成下划线 HTTP 头 `session_id` 的稳定会话适配；旧连字符头 `session-id` 与 JSON `prompt_cache_key` 不得混用。后续只根据新反馈继续，不重复已完成调查或将第三方命中率当作本应用数据。
 
-**最新真机反馈已处理：** 生成中“上下文未知/缓存未知”来自UI未区分等待本轮用量与终态缺失；personal.2已区分待更新/未知/已报告，未用上一轮数字或估算值冒充本轮统计。显示修复已自动化验证并包含在实际下载的新APK中，手机安装后的显示由用户正常使用确认。
+personal.2 在生成期间等待本轮用量，终态仍缺字段才显示“未知”，明确报告零时显示零。该显示逻辑已通过自动化验证，包含在已发布的 APK 中。
 
 ## personal.2历史交接入口（2026-11-17）
 
@@ -30,7 +36,7 @@
 - 已验证：本地与本轮CI的990项模块测试、34项Python检查均通过，两个实际APK及公开下载已验签。
 - 最新产品变动：生成中尚未收到用量显示待更新，结束仍缺失才未知，已报告0保留；临时OAuth回调服务使用500ms优雅关闭窗口、总上限仍1000ms，避免成功页面被截断。取消后保存凭据测试的清理顺序已修，等待真实刷新完成并重开磁盘验证，产品凭据逻辑未改。不要退回已确认的零grace关闭或会抢先停止DataStore的测试夹具。
 - 能力边界继续保留：SIWC套餐原生生图尚不支持，输入看图和客户端工具不受此限制；应用内真实套餐剩余额度尚无经验证适用的数据源，官方管理用量入口保留；Bing此前只修共享网络/错误分类，没有替换搜索服务或重写通用工具协议；思考档位客户端映射已测，所有档位的真实账号服务端接受尚未逐一确认。这些不是本轮未完成的交付任务，不无限探索，按后续具体反馈处理。
-- 尚未经实体手机确认的仅是用户安装personal.2后的实际显示/回调体验；用户已获得APK，无需为了交接要求其立即再测试。本次原始诊断和长日志只存私有/workspace/attachments、/workspace/work；新环境不保证存在。可从GitHub Actions/Release重新取得公开报告和构建证明，不提交原始聊天诊断或任何凭据。现有诊断导出仍只包含当前账号、当前进程最近40次请求，进程结束即清空，不自动上传。
+- 尚未经实体手机确认的仅是用户安装personal.2后的实际显示/回调体验；用户已获得APK，无需为了交接要求其立即再测试。可从GitHub Actions/Release重新取得公开报告和构建证明，不提交原始聊天诊断或任何凭据。现有诊断导出仍只包含当前账号、当前进程最近40次请求，进程结束即清空，不自动上传。
 
 ## 目标、范围与验收
 
@@ -159,21 +165,21 @@
 
 ## 第二轮：真机反馈、范围与验收（2026-11-16）
 
-- 用户确认第一轮最新版已能使用，官方登录和正常聊天是真机已验证状态；保护凭据、聊天、账号及已跑通自动交付。三张截图已收到并阅读。
+- 第一轮交付的官方登录和普通聊天已有真机验证。
 - 本轮目标：按实际Provider/路由/模型能力修复内置工具UI；ChatGPT不支持的原生生图禁用并解释；旧保存开关在此路由迁移/忽略并给一次提示，不能阻断普通文本；高级自定义非法能力仍精确报错。保留图像输入、客户端MCP/函数、其他Provider能力及独立生图提供商。
-- 搜索：截图展示 `搜索网页: 天舟八号发射成功` 和模型引用的 `Search failed: no results found`。先沿真实参数→请求→原始结果→解析→结果回传/历史比对原始3.2.0，不能把模型解释当根因；不换用户搜索服务或增加收费服务。
+- 搜索工具有时报告空结果。按查询参数、HTTP 响应、解析及工具结果回传的顺序，对照原版 3.2.0 检查客户端处理。继续使用原有搜索服务。
 - 额度：重新核实SIWC官方文档/接口/响应字段，确认可靠数据源才实现套餐/应用限额、周期、重置、缓存/刷新/账号隔离；不把单次token usage、RPM、token有效期或本地累计当余额。无可靠来源则记录具体依据并保留准确状态和官方管理入口，不阻塞其余代码修复。
 - 安装硬约束：用户本轮要求沿用 `me.rerere.rikkahub.chatgpt.debug` 和上一Release证书 `369f5d9de364514a92337b02efc50ce5c35bfb53753c325286c0efcaabc5b497`，versionCode大于197，覆盖安装保留数据；本轮不授权擅自换包名/签名/卸载。第一轮签名未持久化风险必须先查证，不能虚报覆盖能力。
 - 当前分支 `custom-3.2.0`，已fetch并确认远端HEAD仍为 `e4fcd0bd`，工作区开始时干净。本节尚未提交，新功能尚未修改或测试。
 - 并行任务：工具能力/请求/UI修复代理；搜索调用链与原始响应调查代理；官方额度/能力文档核实代理；签名来源及可升级交付调查代理。主代理整合、维护本记录、统一Gradle测试和提交推送。
-- 已确认初步证据：搜索UI对应客户端 `search_web`，SearchTools/BingSearchService/对应UI与原始 `e033a47` 无差异；尚未确认手机HTTP返回。图三错误文本存在于本地ChatGPT请求体校验，继续验证保存开关注入链。
+- 已确认初步证据：搜索UI对应客户端 `search_web`，SearchTools/BingSearchService/对应UI与原始 `e033a47` 无差异；尚未确认手机HTTP返回。生图错误文本存在于本地ChatGPT请求体校验，继续验证保存开关注入链。
 - 下一步：完成证据调查与局部修复/回归测试，明确签名可用性；任何关键阻碍立即记录，继续完成不依赖该阻碍的工作。
 
 ## 第二轮调查：已确认问题与签名阻碍
 
-- 图三错误已定位为本地 `ChatGPTProvider.prepareChatGPTRequest` 对 `image_generation` 的校验；UI通用开关允许保存后，shared Responses构建器将其加入请求，发送前即失败。官方Preview页面本轮重新HTTP200读取，仍明确不支持该服务端工具；保留校验，修UI和已保存开关兼容，不伪装实现生图。
-- 原版 `e033a47` 的SearchTools、BingSearchService和SearchWebToolUI与第一轮交付无差异。截图对应客户端 `search_web`；不能仅凭模型对结果的描述认定解析错误。
-- 云端已取得Bing实际HTTP200 HTML：`新闻`解析11条；`天舟八号发射成功`解析10条但原始返回本身是“天”字相关内容，网页title/输入框仍回显完整query。尚未复现手机的空结果。发现Bing独用Jsoup直连绕过共享OkHttp/应用代理及取消机制，拟做有证据的最小修复。原始响应与解析证据 `/workspace/work/search-v2/`。
+- 生图错误已定位为本地 `ChatGPTProvider.prepareChatGPTRequest` 对 `image_generation` 的校验；UI通用开关允许保存后，shared Responses构建器将其加入请求，发送前即失败。官方Preview页面本轮重新HTTP200读取，仍明确不支持该服务端工具；保留校验，修UI和已保存开关兼容，不伪装实现生图。
+- 原版 `e033a47` 的SearchTools、BingSearchService和SearchWebToolUI与第一轮交付无差异。此处使用客户端 `search_web`；不能仅凭模型对结果的描述认定解析错误。
+- 云端检查确认 Bing 的 HTTP 200 响应可回显完整查询，返回的 HTML 也可能包含不相关结果。空结果未在云端复现。Bing 使用 Jsoup 直连，绕过了共享 OkHttp、应用代理及取消机制。
 - **覆盖升级存在明确签名阻碍**：重新验证上一Release APK证书为 `369f5d...b497`；当前本地APK为 `25eba60...5289`，不同。上次成功Actions日志证明固定签名secret为空、使用临时debug key、清理步骤成功删除该key；唯一artifact仅测试/公开验证报告，cache路径不含keystore。当前无恢复原私钥的安全来源，secrets API仍403；APK中的公开证书不能恢复私钥。证据 `/workspace/work/signing-v2-certificates.json`。
 - 用户本轮不授权改包/换签名/卸载，因此发布脚本将增加原证书强校验；错误签名不得创建Release或冒充覆盖升级包。继续完成全部独立代码、测试和候选构建，不能因签名问题丢弃工程成果；最后只说明无法由工程代码弥补的签名条件。
 - 最新文档/证据仍未包含手机真实HTTP headers或用户token；不索取登录凭据，不把模拟响应当真实套餐余额依据。
@@ -283,7 +289,7 @@
 
 - **已修复设置与聊天兼容，套餐原生生图尚不支持**：旧ChatGPT不兼容内置工具开关迁移并一次提示；UI按有效Provider/路由/目录限制；高级显式非法工具准确拒绝；看图、客户端MCP/functions、其他Provider和独立生图方式保留。依据官方SIWC Preview限制本轮仍明确禁止image_generation。
 - **应用内实时剩余额度未实现**：已查官方SIWC/Responses/限流/用量文档及原版wham/Codex来源，未建立适用新凭据且明确套餐/应用范围、周期、reset的可靠数据源。没有手机真实授权HTTP headers/events可检验，不能把文档或合成数据当实际余额。应用显示准确说明和官方管理用量入口，无伪造百分比/刷新/缓存。
-- **搜索**：截图对应客户端search_web，原版schema/执行/UI未被OAuth迁移改变；修复Bing绕过共享网络配置并准确区分错误。云端完整查询已到Bing，但原始HTML含不相关结果，未复现手机空结果。真实手机网络/代理下的搜索仍待后续可安装版本复测，不宣称彻底修复上游结果质量。
+- **搜索**：该功能使用客户端search_web，原版schema/执行/UI未被OAuth迁移改变；修复Bing绕过共享网络配置并准确区分错误。云端完整查询已到Bing，但原始HTML含不相关结果，未复现手机空结果。真实手机网络/代理下的搜索仍待后续可安装版本复测，不宣称彻底修复上游结果质量。
 - **思考**：七档客户端最终JSON映射、保存恢复、自定义冲突、多轮工具、辅助模型/档位来源均通过测试；除AUTO外只有目录声明才可选，未声明的旧选择保留并提示。真实账号服务端逐档接受仍未验证，不以回答风格或耗时判定。
 
 
@@ -330,7 +336,7 @@
 
 ## 补救阶段：缓存与迁移实现，首次统一测试通过
 
-- 缓存原始正数cached_tokens原本可解析，尚无证据说手机正命中全部被丢弃。确证缺陷为missing→0、明确零快照无法覆盖、未知样本混入比例分母、cache_write未保存、工具末步缺usage借用上一步。已修为presence/unknown/partial，DB33保留历史（旧零未知），比例只采用同一已知样本的input/cached并显示覆盖范围。
+- 缓存原始正数cached_tokens原本可解析。确证缺陷为missing→0、明确零快照无法覆盖、未知样本混入比例分母、cache_write未保存、工具末步缺usage借用上一步。已修为presence/unknown/partial，DB33保留历史（旧零未知），比例只采用同一已知样本的input/cached并显示覆盖范围。
 - 原sessionId已稳定来自持久conversation.id，prompt_cache_key未漏传，无默认explicit。仅ChatGPT稳定工具/schema对象/技能清单顺序，保持语义与其他Provider行为。高级explicit无有效content断点针对提示；不自动注入未经SIWC确认的新options/diagnostics，不改storefalse/streamtrue或添加retention。
 - 新增当前进程/当前账号最近40个HTTP请求的本地脱敏缓存诊断，HMAC摘要/长度/差异位置与终态实际usage字段presence，手动导出，无聊天正文/凭据/自动上传。合成测试示例input4096/cached2048/write1024是fixture，不是真人前后测量，不能声称缓存已恢复。
 - 新包采用me.rerere.rikkahub.personal，versionCode199/versionName3.2.0-personal.1，应用名“RikkaHub 自用”。备份跨包导入会重映射备份内实际存在的附件路径，保留旧版数据；OAuth整个credential/pending不迁移，新包重新登录，非密钥registration可按官方跨host规则复用。
@@ -344,11 +350,11 @@
 - 请求代理核对Issue/最新评论/关联PR与官方文档，沿最终header合并、授权及HTTP请求实施必要SIWC-only修复；诊断代理扩展实际发送session_id及服务端返回prompt_cache_key的presence/HMAC/同会话变化，未返回不可用请求值补造。
 - 既有诊断复审已补重复terminal一次保护、max档位记录和独立会话摘要分组；即使高级Body改prompt_cache_key也能检测变化。新增3项测试待统一运行。
 - 签名脚本实际JDK私钥签名验签修复后，全部Python31项通过（含实际短期fixture、SQLite迁移与双恢复发布门禁），日志/workspace/work/personal-python-tests-2.log。未生成应用长期私钥，持久存储权限仍缺；官方签名验收不能以此fixture代替。
-- 下一步：完成session_id最终HTTP与响应键测试→重跑受影响AI/App测试和ARM64内部打包→提交推送→实际Actions验证。没有真实手机授权原始响应，仍不能判定近零是服务端真实miss或宣称已恢复。
+- 下一步：完成session_id最终HTTP与响应键测试→重跑受影响AI/App测试和ARM64内部打包→提交推送→实际Actions验证。服务端缓存命中率仍待验证。
 
 ### 会话头专项已确认事实
 
-- 当前本项目SIWC代码确实未生成下划线HTTP头session_id；JSON prompt_cache_key已使用持久conversation.id，旧session-id只被主动移除。因此存在可修复客户端缺口，但不能只据缺口断言手机近零根因。
+- 当前本项目SIWC代码确实未生成下划线HTTP头session_id；JSON prompt_cache_key已使用持久conversation.id，旧session-id只被主动移除。服务端命中情况仍待验证。
 - 已取得DevKit#9正文及全部3条评论、OpenClaw#197532完整timeline。直接关联PR#197588（head b6f3c238）仍open未合并，其stand-in验证header抵达，并未补真实cache复测；已合并PR#141107属于proxy不同范围，不能混同。OpenClaw第三方对照只加稳定session_id由0%至99.07%；DevKit最新评论仍未确定根因，使用的是连字符session-id/thread-id/H1控制，并非该下划线头的同一对照。必须严格区分，不把第三方数据当本项目测试前后数据或官方通用保证。
 - 拟修复仅SIWC：从稳定OIDC issuer/subject与持久会话ID派生64字符会话头，避开access token及可选metadata，续聊/工具/刷新/重启保持一致；自定义冲突明确提示、相同值去重；旧Codex整套头不恢复。服务端返回缓存键只依据真实terminal字段记presence/HMAC，不用客户端值补造。
 - 完整Issue/PR证据保存在/workspace/work/session-cache-audit；脱敏诊断将观察最终网络interceptor中的实际Request与401重试，而不只读取中间构造对象。
@@ -382,7 +388,7 @@
 - 主Actions43904892084最终success；exact source eebc76d112c94b93b4aac54d6601c9c8c4576ab6。validate job133430971329成功，Gradle BUILD SUCCESSFUL in 6m 1s，Python34/34通过。签名主/备份构建及publish均因空pin正确skipped；工作流success仅代表当前验证成功，不能称长期签名恢复或APK交付成功。
 - 已实际下载artifact14245956840，ZIP SHA-256 `3afa488918c1c50cea4d991cbd76ef50b990af4af14ba91ae585ec6fd4f9acca` 与GitHub digest一致。独立逐文件核对139份JUnit XML及实际testcase：OAuth10、AI367、搜索22、App585，总984项，failure/error/skipped全部0。证据/workspace/work/actions-43904892084/independent-test-verification.json，完整日志validate-complete.log，ZIP personal-tests.zip，XML test-xml/。
 - 截至此条，所有不依赖签名存储权限的源码修改、测试、内部ARM64完整打包、CI验证、提交推送均完成。源码已提交cbf3552b/eebc76d1，进度此前4b9ce31a已推送；本条随后以文档提交推送。没有任何未提交产品改动，没有新版Release/APK公开下载链接，没有应用长期私钥生成或已存储的声明。
-- 缓存最终边界：已确认默认SIWC路径缺少session_id，以及unknown/zero和工具用量汇总的客户端缺陷；已修并在实际loopback HTTP请求上验证。手机近零究竟是服务端miss、统计缺失还是两者组合仍无本账号原始证据，不能宣称已恢复。导出当前进程/当前账号最近40次wire请求的脱敏诊断已包含新包，便于安装后在长前缀纯文本/工具轮次对照真实返回；不要求交出ChatGPT令牌。
+- 缓存最终边界：已确认默认SIWC路径缺少session_id，以及unknown/zero和工具用量汇总的客户端缺陷；已修并在实际loopback HTTP请求上验证。协议测试不能证明服务端命中率有变化。导出当前进程/当前账号最近40次wire请求的脱敏诊断已包含新包，便于安装后在长前缀纯文本/工具轮次对照真实返回；不要求交出ChatGPT令牌。
 - 网络失败自动重试仍沿用原有关闭策略；后续发起同一聊天请求继续从同一持久会话ID派生session_id。401刷新已用真实MockWebServer捕获两次最终HTTP验证头与body稳定。
 - 唯一需用户的配置仍为 `RIKKAHUB_SIGNING_SETUP_TOKEN`，限仓库0425-sketch/rikkahub、Secrets read/write、建议1天有效期，值只保存在GitHub Actions Secret。准确入口https://github.com/0425-sketch/rikkahub/settings/secrets/actions/new；可预填创建页https://github.com/settings/personal-access-tokens/new?name=RikkaHub-signing-setup&target_name=0425-sketch&expires_in=1&secrets=write，仍需选Only select repositories→rikkahub。当前连接403与实际bootstrap SETUP_PERMISSION是需此配置的依据，不是再次请求改安装方式。
 - 下一轮恢复必须先读本文件、核对Git远端、确认该配置已完成，再按上一节具体动作接续。不要重跑旧签名调查，不丢弃已通过的缓存/工具/思考/搜索/迁移修复，不将暂停于必要权限配置视为完成交付。
@@ -423,7 +429,7 @@
 - APK SHA-256 `4e165eda796b386c2b8196046e6092310be9676e01189203a9d08734dc0a6937`；证书SHA-256 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`。已与固定公开pin一致，长期签名实际恢复复用验证完成，后续此包名固定复用该证书。
 - root已再次无令牌从公开Release下载APK、.sha256、build-provenance.json、signing-restoration-verification.json，独立核验下载字节/摘要、apksigner、aapt2包名/版本/minSdk/ABI、源commit、公开双恢复proof与GitHub实际job/runner一致。证据/workspace/work/release-43909609310/independent-delivery-verification.json；下载日志/workspace/work/independent-personal-download.log。此次是新Release APK实际下载，非内部候选或旧版链接。
 - 最少迁移：旧版设置→数据备份→本地，选聊天记录/文件导出ZIP；安装新“RikkaHub 自用”，首次使用时同页导入并重启；重新进行ChatGPT官方登录。聊天/助手/普通设置保留，跨包附件路径已修复；旧应用及数据保留，OAuth完整credential/pending按安全机制不迁移。
-- 交付能力边界保持：已修复设置与聊天兼容，套餐原生生图尚不支持；真实应用内套餐余额未实现（未确认适用新凭据的可靠数据源）；Bing共享网络与错误分类已修，手机空结果仍需正常功能复测；缓存session_id/前缀稳定/统计及最小脱敏导出已修，但无本账号服务端真实命中前后数据，不宣称缓存恢复。
+- 交付能力边界保持：已修复设置与聊天兼容，套餐原生生图尚不支持；真实应用内套餐余额未实现（未确认适用新凭据的可靠数据源）；Bing共享网络与错误分类已修，手机空结果仍需正常功能复测；缓存session_id/前缀稳定/统计及最小脱敏导出已修，服务端命中率变化仍待验证。
 - 思考客户端最终映射已测：自动省略effort、关闭none、低low、中等medium、高high、超高xhigh、最大max；除自动外以模型目录声明为准，不静默降档。真实账号各档服务端接受仍未逐档验证。此前984+34项验证全部保留。
 
 ### 最终独立验收与安全清理
@@ -433,10 +439,10 @@
 - publish日志明确确认一次性RIKKAHUB_SIGNING_SETUP_TOKEN已成功删除并查询确认，不是空值/404跳过。主用RIKKAHUB_PERSONAL_SIGNING与恢复RIKKAHUB_PERSONAL_SIGNING_BACKUP保留；用户PAT本体未撤销，按其有效期到期。没有要求用户额外工程操作。
 - root公开APK二次下载校验也已完成，已满足本轮交付标准。所有产品源码、固定公开证书和自动交付流程已提交推送；本次最终记录随后提交，实际文档HEAD以git log为准。后续新版必须递增版本并继续复用该持久签名和公开pin，不重新生成签名。
 
-## 新真机证据与生成中统计显示修复（2026-11-17）
+## 生成中统计显示修复（2026-11-17）
 
-- 从实际Git干净HEAD dd60ec64恢复。用户反馈流式及工具循环中暂时显示上下文未知/缓存未知，完成后正常。原始用户文件不提交仓库。
-- 代码已定位：Responses终态才提供用量；AgentLoop在当前HTTP请求尚无usage时保留空TokenUsage避免借用上一轮；NerdLine没有接收父组件已有loading，因而将“等待本轮统计”和“完成后仍未提供”都显示未知。数据未被清零，终态回来后正常，符合截图与日志。
+- 流式响应和工具循环在收到终态前，需要单独显示本轮用量仍在等待。
+- 代码已定位：Responses终态才提供用量；AgentLoop在当前HTTP请求尚无usage时保留空TokenUsage避免借用上一轮；NerdLine没有接收父组件已有loading，因而将“等待本轮统计”和“完成后仍未提供”都显示未知。数据未被清零，终态回来后正常。
 - 最小修复范围：仅App显示层传入当前消息loading；缺失字段且正在生成显示统计待更新，真实字段包括明确0照常显示，停止/失败/完成后仍缺失显示未知；详情与行内一致。不修改OAuth、session_id/cache_key、AI usage/DB、工具执行或Bing。stream_usage_ui代理实现UI/helper/文案及少量回归测试，root负责整合、版本200/personal.2、测试、固定签名Actions及新APK下载。
 
 ### 显示修改完成，本地验证及既有测试夹具排查

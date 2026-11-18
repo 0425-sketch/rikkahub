@@ -255,6 +255,9 @@
   <string name="chat_page_compress_additional_prompt_hint">Specify what to preserve or focus on</string>
   <string name="chat_page_compress_context">Compress History</string>
   <string name="chat_page_compress_context_desc">Compress the conversation into a summary to save tokens</string>
+  <string name="chat_page_compress_missing_window">Set the model’s context window to enable automatic compression. You can compress manually here.</string>
+  <string name="chat_page_compress_missing_usage">Automatic compression needs the input token count for the latest reply. You can still compress manually.</string>
+  <string name="chat_page_compress_missing_window_and_usage">Automatic compression needs the model’s context window and the latest input token count. You can still compress manually.</string>
   <string name="chat_page_compress_context_title">Compress Conversation History</string>
   <string name="chat_page_compressing">Compressing...</string>
   <string name="chat_page_conversation_system_prompt">Conversation System Prompt</string>
@@ -1136,7 +1139,8 @@
   <string name="unpin_chat">Unpin the Chat</string>
   <string name="update_card_check_failed">Check update failed</string>
   <string name="update_card_close">Close</string>
-  <string name="update_card_downloading">Downloading, please check status bar for progress</string>
+  <string name="update_card_downloading">Downloading. When finished, open the APK from the notification or Downloads to install it.</string>
+  <string name="update_card_download_failed">Could not start the download. Check that Download Manager is available and try again.</string>
   <string name="update_card_new_version_found">New version found %s</string>
   <string name="update_card_unknown_error">Unknown error</string>
   <string name="upload_file">Upload File</string>
@@ -1581,6 +1585,7 @@
   <string name="memory_file_page_edit_warning">Try not to edit memories by hand. Ask the AI in chat to remember or change things for you instead.</string>
   <string name="setting_provider_page_context_length">Context Length</string>
   <string name="setting_provider_page_context_length_custom">Custom</string>
+  <string name="setting_provider_page_use_account_capabilities">Use input, output and model capabilities from account</string>
   <string name="setting_media_page_asset_storage">Asset Storage</string>
   <string name="translator_page_error">Translation failed</string>
   <string name="translator_page_model_missing">No translation model selected. Tap the top-right corner to choose one.</string>
@@ -1893,6 +1898,7 @@
   <string name="cache_usage_partial">At least %1$s (partly unreported)</string>
   <string name="cache_usage_write">Cache writes</string>
   <string name="cache_usage_context_unknown">Context unknown</string>
+  <string name="chat_message_usage_not_reported">Token usage unavailable for this request</string>
   <string name="cache_usage_read_unknown_short">Cache unknown</string>
   <string name="cache_usage_last_read">Cache reads (last request)</string>
   <string name="cache_usage_last_write">Cache writes (last request)</string>

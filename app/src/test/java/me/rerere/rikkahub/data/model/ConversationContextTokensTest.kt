@@ -60,6 +60,17 @@ class ConversationContextTokensTest {
         )
 
         assertNull(conversation.lastContextTokens())
+        assertNull(conversation.lastContextReply())
+    }
+
+    @Test
+    fun `a reply without current input usage is distinct from having no reply since compression`() {
+        val reply = assistantMessage(
+            1, usage = TokenUsage(promptTokens = 500), lastUsage = TokenUsage(cacheWriteTokens = 10),
+        )
+        val conversation = conversation(reply)
+        assertEquals(reply, conversation.lastContextReply())
+        assertNull(conversation.lastContextTokens())
     }
 
     @Test

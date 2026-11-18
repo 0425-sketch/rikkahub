@@ -19,6 +19,7 @@ import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.CustomBody
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.ChatGPTModelCapabilities
+import me.rerere.ai.provider.ChatGPTCatalogField
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.OAuthCredential
 import me.rerere.ai.provider.Model
@@ -33,6 +34,7 @@ import me.rerere.ai.provider.providers.openai.ResponseAPI
 import me.rerere.ai.provider.providers.openai.ResponseProviderCapabilities
 import me.rerere.ai.provider.providers.openai.ResponsesEndpoint
 import me.rerere.ai.provider.providers.withAccountAuthenticator
+import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.StreamChunk
 import me.rerere.ai.ui.StreamChunkHandler
 import me.rerere.ai.ui.UIMessage
@@ -232,8 +234,9 @@ internal fun parseChatGPTModels(body: String): List<Model> {
                     add(ModelAbility.TOOL)
                     if (reasoning) add(ModelAbility.REASONING)
                 },
-                contextLength = model["context_window"]?.jsonPrimitiveOrNull?.intOrNull
-                    ?.takeIf { it > 0 } ?: Model().contextLength,
+                contextLength = model["context_window"]?.jsonPrimitiveOrNull?.intOrNull?.takeIf { it > 0 }
+                    ?: ModelRegistry.MODEL_CONTEXT_LENGTH.getData(slug)?.takeIf { it > 0 } ?: 0,
+                chatGPTCatalogFields = ChatGPTCatalogField.all,
                 chatGPTCapabilities = ChatGPTModelCapabilities(
                     reasoningEfforts = reasoningEfforts,
                     defaultReasoningEffort = model.stringOrNull("default_reasoning_level"),

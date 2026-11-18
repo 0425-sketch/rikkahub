@@ -229,12 +229,14 @@ androidComponents {
         // A distinct identity keeps the previously installed app and all of its data intact.
         // Durable signing and two clean restore builds are required before publication.
         variant.applicationId.set("me.rerere.rikkahub.personal")
+        val personalVersionCode = 202
+        val personalVersionName = "3.3.0-personal.2"
         variant.outputs.forEach { output ->
-            output.versionCode.set(201)
-            output.versionName.set("3.3.0-personal.1")
+            output.versionCode.set(personalVersionCode)
+            output.versionName.set(personalVersionName)
         }
-        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"3.3.0-personal.1\"", null))
-        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"201\"", null))
+        variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"$personalVersionName\"", null))
+        variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"$personalVersionCode\"", null))
         if (!personalUnsigned) {
             android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
                 checkNotNull(variant.signingConfig) { "AGP did not expose signing configuration for the personal APK." }

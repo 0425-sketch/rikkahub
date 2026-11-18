@@ -76,7 +76,7 @@ import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
-import me.rerere.rikkahub.data.model.lastContextTokens
+import me.rerere.rikkahub.data.model.lastContextReply
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.ui.components.ui.ExtensionSelector
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -315,6 +315,12 @@ internal fun FilesPicker(
 
                     // Compress History Button
                     if (showCompress) {
+                        val reply = remember(conversation.messageNodes) { conversation.lastContextReply() }
+                        val contextTokens = reply?.contextTokens()
+                        val contextLength = chatModel?.contextLength?.takeIf { it > 0 }
+                        val hint = if (settings.enableAutoCompress && chatModel != null && reply != null) {
+                            autoCompressionHint(contextLength, contextTokens)
+                        } else null
                         SegmentedListItem(
                             onClick = { onShowCompressDialogChange(true) },
                             shapes = ListItemDefaults.segmentedShapes(index = itemIndex++, count = itemCount),
@@ -325,10 +331,6 @@ internal fun FilesPicker(
                                 )
                             },
                             trailingContent = {
-                                val contextTokens = remember(conversation.messageNodes) {
-                                    conversation.lastContextTokens()
-                                }
-                                val contextLength = chatModel?.contextLength?.takeIf { it > 0 }
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -354,6 +356,7 @@ internal fun FilesPicker(
                                     }
                                 }
                             },
+                            supportingContent = hint?.let { label -> { Text(stringResource(label)) } },
                         ) {
                             Text(stringResource(R.string.chat_page_compress_context))
                         }
@@ -382,6 +385,15 @@ internal fun FilesPicker(
             onDismiss()
         }, onConfirm = onCompressContext)
     }
+}
+
+/** The same two inputs used by ChatService to compare the most recent request to the threshold. */
+@StringRes
+internal fun autoCompressionHint(contextLength: Int?, contextTokens: Int?): Int? = when {
+    contextLength == null && contextTokens == null -> R.string.chat_page_compress_missing_window_and_usage
+    contextLength == null -> R.string.chat_page_compress_missing_window
+    contextTokens == null -> R.string.chat_page_compress_missing_usage
+    else -> null
 }
 
 @Composable

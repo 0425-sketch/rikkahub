@@ -14,6 +14,7 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ChatGPTCatalogField
 import me.rerere.ai.provider.OAuthCredential
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
@@ -157,9 +158,23 @@ class ChatGPTProviderTest {
         assertEquals(listOf(Modality.TEXT, Modality.IMAGE), full.inputModalities)
         assertEquals(listOf(ModelAbility.TOOL, ModelAbility.REASONING), full.abilities)
         assertEquals(272000, full.contextLength)
+        assertEquals(ChatGPTCatalogField.all, full.chatGPTCatalogFields)
         val mini = models[1]
         assertEquals(listOf(Modality.TEXT), mini.inputModalities)
         assertEquals(listOf(ModelAbility.TOOL), mini.abilities)
+    }
+
+    @Test
+    fun `catalog window precedes the registry and absent or invalid unknown windows stay unknown`() {
+        val models = parseChatGPTModels(
+            """{"models":[
+                {"slug":"deepseek-v4-flash","visibility":"list","context_window":4096},
+                {"slug":"deepseek-v4-flash-vision-exp","visibility":"list"},
+                {"slug":"fixture-unlisted","visibility":"list","context_window":-5},
+                {"slug":"fixture-unlisted-b","visibility":"list","context_window":"invalid"}
+            ]}""",
+        )
+        assertEquals(listOf(4096, 1_000_000, 0, 0), models.map { it.contextLength })
     }
 
     @Test

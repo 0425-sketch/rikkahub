@@ -26,7 +26,7 @@ internal class ResponseApiStreamDecoder(
     private val functionToolNamespace: String? = null,
     private val errorMapper: (JsonElement, Int?, String?) -> Exception = { error, _, _ -> error.parseErrorDetail() },
 ) : StreamChunkDecoder {
-    private val state = ResponseStreamState()
+    private val state = ResponseStreamState(verifyToolArguments = requireCompletedResponse)
     private var receivedCompleted = false
     private val verifiedToolIds = mutableSetOf<String>()
 
@@ -335,7 +335,7 @@ internal class ResponseApiStreamDecoder(
         }
     }
 
-    private class ResponseStreamState {
+    private class ResponseStreamState(private val verifyToolArguments: Boolean) {
         val toolCallIdsByItemId = mutableMapOf<String, String>()
         val toolCallIdsByOutputIndex = mutableMapOf<Int, String>()
         val toolIdsWithInput = mutableSetOf<String>()
@@ -415,7 +415,7 @@ internal class ResponseApiStreamDecoder(
         }
         fun endImage(id: String) = if (openImageIds.remove(id)) listOf(StreamChunk.ImageEnd(id)) else emptyList()
         fun startTool(id: String, name: String, initialInput: String): List<StreamChunk> = buildList {
-            toolNames.putIfAbsent(id, name)
+            if (verifyToolArguments) toolNames.putIfAbsent(id, name)
             if (openToolIds.add(id)) {
                 interruptTexts()
                 add(StreamChunk.ToolCallStart(id, name))
@@ -429,7 +429,9 @@ internal class ResponseApiStreamDecoder(
             }
             if (input.isNotEmpty()) {
                 toolIdsWithInput += id
-                toolInputs.getOrPut(id) { StringBuilder() }.append(input)
+                if (verifyToolArguments) {
+                    toolInputs.getOrPut(id) { StringBuilder() }.append(input)
+                }
                 add(StreamChunk.ToolCallDelta(id, inputDelta = input))
             }
         }

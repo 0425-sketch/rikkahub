@@ -255,6 +255,9 @@
   <string name="chat_page_compress_additional_prompt_hint">指定要保留或关注的内容</string>
   <string name="chat_page_compress_context">压缩历史</string>
   <string name="chat_page_compress_context_desc">将对话压缩为摘要以节省令牌</string>
+  <string name="chat_page_compress_missing_window">设置模型的上下文窗口后才能自动压缩。你仍可在此手动压缩。</string>
+  <string name="chat_page_compress_missing_usage">暂未取得最近一次回复的输入令牌数，无法判断何时自动压缩。你仍可手动压缩。</string>
+  <string name="chat_page_compress_missing_window_and_usage">模型窗口和最近一次输入令牌数均未知，无法判断何时自动压缩。你仍可手动压缩。</string>
   <string name="chat_page_compress_context_title">压缩对话历史</string>
   <string name="chat_page_compressing">正在压缩...</string>
   <string name="chat_page_conversation_system_prompt">对话系统提示</string>
@@ -1102,7 +1105,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="unpin_chat">取消置顶聊天</string>
   <string name="update_card_check_failed">检查更新失败</string>
   <string name="update_card_close">关闭</string>
-  <string name="update_card_downloading">正在下载，请在状态栏查看进度</string>
+  <string name="update_card_downloading">下载已开始。完成后可点系统通知，或在“下载”中打开 APK 手动安装。</string>
+  <string name="update_card_download_failed">未能开始下载，请检查系统下载管理器是否可用后重试。</string>
   <string name="update_card_new_version_found">发现新版本 %s</string>
   <string name="update_card_unknown_error">未知错误</string>
   <string name="upload_file">上传文件</string>
@@ -1574,6 +1578,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="memory_file_page_edit_warning">尽量避免手动编辑记忆，推荐在聊天界面让 AI 替你记住或者更改记忆</string>
   <string name="setting_provider_page_context_length">上下文长度</string>
   <string name="setting_provider_page_context_length_custom">自定义</string>
+  <string name="setting_provider_page_use_account_capabilities">使用账号目录的输入、输出和模型能力</string>
   <string name="setting_media_page_asset_storage">素材存储</string>
   <string name="translator_page_error">翻译失败</string>
   <string name="translator_page_model_missing">未选择翻译模型。点击右上角进行选择。</string>
@@ -1895,6 +1900,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="cache_usage_partial">至少 %1$s（部分未提供）</string>
   <string name="cache_usage_write">缓存写入</string>
   <string name="cache_usage_context_unknown">上下文未知</string>
+  <string name="chat_message_usage_not_reported">本次请求的用量未知</string>
   <string name="cache_usage_read_unknown_short">缓存未知</string>
   <string name="cache_usage_last_read">缓存读取（最后一次请求）</string>
   <string name="cache_usage_last_write">缓存写入（最后一次请求）</string>

@@ -1,5 +1,10 @@
 package me.rerere.rikkahub.ui.components.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,7 +27,7 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,14 +40,11 @@ import me.rerere.ui.toast.ToastType
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Download01
-import me.rerere.rikkahub.BuildConfig
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.context.LocalToaster
-import me.rerere.rikkahub.ui.hooks.useThrottle
 import me.rerere.rikkahub.ui.pages.chat.ChatVM
 import me.rerere.rikkahub.utils.UpdateDownload
-import me.rerere.rikkahub.utils.Version
 import me.rerere.rikkahub.utils.onError
 import me.rerere.rikkahub.utils.onSuccess
 import me.rerere.rikkahub.utils.toLocalDateTime
@@ -53,7 +55,7 @@ import kotlin.time.toJavaInstant
 @OptIn(ExperimentalTime::class)
 @Composable
 fun UpdateCard(vm: ChatVM) {
-    val state by vm.updateState.collectAsStateWithLifecycle()
+    val state by vm.updateChecker.updateState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val toaster = LocalToaster.current
     state.onError {
@@ -78,11 +80,9 @@ fun UpdateCard(vm: ChatVM) {
         }
     }
     state.onSuccess { info ->
-        var showDetail by remember { mutableStateOf(false) }
-        var dismissed by remember { mutableStateOf(false) }
-        val current = remember { Version(BuildConfig.VERSION_NAME) }
-        val latest = remember(info) { Version(info.version) }
-        if (latest > current && !dismissed) {
+        var showDetail by rememberSaveable(info.version) { mutableStateOf(false) }
+        var dismissed by rememberSaveable(info.version) { mutableStateOf(false) }
+        if (!dismissed) {
             Card(
                 onClick = {
                     showDetail = true
@@ -122,10 +122,31 @@ fun UpdateCard(vm: ChatVM) {
             }
         }
         if (showDetail) {
-            val downloadHandler = useThrottle<UpdateDownload>(500) { item ->
-                vm.updateChecker.downloadUpdate(context, item)
-                showDetail = false
-                toaster.show(context.getString(R.string.update_card_downloading), type = ToastType.Info)
+            var pendingName by rememberSaveable { mutableStateOf<String?>(null) }
+            fun startDownload(item: UpdateDownload) {
+                if (vm.updateChecker.downloadUpdate(context, item)) {
+                    showDetail = false
+                    toaster.show(context.getString(R.string.update_card_downloading), type = ToastType.Info)
+                } else {
+                    toaster.show(context.getString(R.string.update_card_download_failed), type = ToastType.Error)
+                }
+            }
+            val storagePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                val item = info.downloads.find { it.name == pendingName }
+                pendingName = null
+                if (granted && item != null) startDownload(item)
+                else if (!granted) toaster.show(context.getString(R.string.media_creation_page_storage_permission_required))
+            }
+            val downloadHandler: (UpdateDownload) -> Unit = download@{ item ->
+                if (!showDetail || pendingName != null) return@download
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                    context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    pendingName = item.name
+                    storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                } else {
+                    startDownload(item)
+                }
             }
             ModalBottomSheet(
                 onDismissRequest = { showDetail = false },

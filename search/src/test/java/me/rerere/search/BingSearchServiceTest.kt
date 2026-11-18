@@ -42,7 +42,7 @@ class BingSearchServiceTest {
 
     @Test
     fun `shared client receives the complete unicode and reserved query characters`() = runBlocking {
-        val query = "天舟八号发射成功 + \"新闻\" & 海外/#?=2026"
+        val query = "海滨公园新馆开放 + \"新闻\" & 本地/#?=2026"
         var captured: Request? = null
         useClient(OkHttpClient.Builder().addInterceptor { chain ->
             captured = chain.request()
@@ -59,18 +59,18 @@ class BingSearchServiceTest {
         assertEquals(null, request.header("Accept-Encoding"))
         assertEquals("https://www.bing.com/", request.header("Referer"))
         assertEquals("SRCHHPGUSR=ULSR=1", request.header("Cookie"))
-        assertEquals("天舟八号 & 新闻", result.items.single().title)
+        assertEquals("海滨公园 & 新闻", result.items.single().title)
         assertEquals("https://example.org/news?q=1&lang=zh", result.items.single().url)
-        assertEquals("原始摘要：发射成功。", result.items.single().text)
+        assertEquals("原始摘要：新馆开放。", result.items.single().text)
     }
 
     @Test
     fun `upstream unrelated results are preserved without fabricated relevance or fallback`() {
         val result = parseBingSearchResults(
-            """<ol id="b_results"><li class="b_algo"><h2><a href="https://example.org/tian">天 - 字典</a></h2><div class="b_caption"><p>上游原始结果</p></div></li></ol>""",
-            "https://www.bing.com/search?q=天舟八号发射成功",
+            """<ol id="b_results"><li class="b_algo"><h2><a href="https://example.org/dictionary/hai">海 - 字典</a></h2><div class="b_caption"><p>上游原始结果</p></div></li></ol>""",
+            "https://www.bing.com/search?q=海滨公园新馆开放",
         )
-        assertEquals("天 - 字典", result.items.single().title)
+        assertEquals("海 - 字典", result.items.single().title)
         assertEquals("上游原始结果", result.items.single().text)
     }
 
@@ -149,6 +149,6 @@ class BingSearchServiceTest {
         .body(html.toResponseBody("text/html; charset=utf-8".toMediaType())).build()
 
     companion object {
-        private const val RESULT_HTML = """<ol id="b_results"><li class="b_algo"><h2><a href="https://example.org/news?q=1&amp;lang=zh">天舟八号 &amp; 新闻</a></h2><div class="b_caption"><p>原始摘要：发射成功。</p></div></li></ol>"""
+        private const val RESULT_HTML = """<ol id="b_results"><li class="b_algo"><h2><a href="https://example.org/news?q=1&amp;lang=zh">海滨公园 &amp; 新闻</a></h2><div class="b_caption"><p>原始摘要：新馆开放。</p></div></li></ol>"""
     }
 }

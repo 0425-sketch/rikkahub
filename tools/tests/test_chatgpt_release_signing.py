@@ -25,10 +25,12 @@ class PublishReached(Exception):
 class ChatGPTReleaseSigningTest(unittest.TestCase):
     def test_release_identity_matches_android_output_and_build_config(self):
         source = (Path(__file__).resolve().parents[2] / "app/build.gradle.kts").read_text()
-        self.assertEqual(release.VERSION_CODE, int(re.search(r"output\.versionCode\.set\((\d+)\)", source)[1]))
-        self.assertEqual(release.VERSION_NAME, re.search(r'output\.versionName\.set\("([^"]+)"\)', source)[1])
-        self.assertGreater(release.VERSION_CODE, 200)
-        self.assertEqual("3.3.0-personal.1", release.VERSION_NAME)
+        self.assertEqual(release.VERSION_CODE, int(re.search(r"val personalVersionCode = (\d+)", source)[1]))
+        self.assertEqual(release.VERSION_NAME, re.search(r'val personalVersionName = "([^"]+)"', source)[1])
+        self.assertIn("output.versionCode.set(personalVersionCode)", source)
+        self.assertIn("output.versionName.set(personalVersionName)", source)
+        self.assertGreater(release.VERSION_CODE, 201)
+        self.assertEqual("3.3.0-personal.2", release.VERSION_NAME)
 
     def test_inspection_rejects_unsigned_apk_before_publication(self):
         with tempfile.TemporaryDirectory() as tmp, \
@@ -40,7 +42,7 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
 
     def test_inspection_rejects_old_personal_version_with_valid_signature(self):
         signature = f"Signer certificate SHA-256 digest: {CERT}\n"
-        badging = "package: name='me.rerere.rikkahub.personal' versionCode='200' versionName='3.2.0-personal.2'\n"
+        badging = "package: name='me.rerere.rikkahub.personal' versionCode='201' versionName='3.3.0-personal.1'\n"
         with tempfile.TemporaryDirectory() as tmp, patch.object(release.subprocess, "run", side_effect=[
             subprocess.CompletedProcess([], 0, stdout=signature),
             subprocess.CompletedProcess([], 0, stdout=badging),

@@ -47,7 +47,7 @@ import org.junit.Test
 class SearchToolRoundTripTest {
     @Test
     fun `actual client search preserves arguments results and history through ChatGPT continuation`() = runBlocking {
-        val query = "天舟八号发射成功 + \"新闻\" & 海外"
+        val query = "海滨公园新馆开放 + \"新闻\" & 本地"
         val arguments = buildJsonObject { put("query", query) }
         val requests = mutableListOf<JsonObject>()
         var searchCount = 0
@@ -58,7 +58,7 @@ class SearchToolRoundTripTest {
                     searchCount++
                     assertEquals(query, request.url.queryParameter("q"))
                     assertEquals(setOf("q"), request.url.queryParameterNames)
-                    """<ol id="b_results"><li class="b_algo"><h2><a href="https://example.org/news?q=1&amp;lang=zh">天舟八号 &amp; 新闻</a></h2><div class="b_caption"><p>原始摘要：发射成功。</p></div></li></ol>""" to "text/html; charset=utf-8"
+                    """<ol id="b_results"><li class="b_algo"><h2><a href="https://example.org/news?q=1&amp;lang=zh">海滨公园 &amp; 新闻</a></h2><div class="b_caption"><p>原始摘要：新馆开放。</p></div></li></ol>""" to "text/html; charset=utf-8"
                 }
                 "api.openai.com" -> {
                     assertEquals("/v1/responses", request.url.encodedPath)
@@ -117,7 +117,7 @@ class SearchToolRoundTripTest {
                 UIMessage.system("请保留历史并使用客户端搜索结果。"),
                 UIMessage.user("上一轮问题"),
                 UIMessage.assistant("上一轮回答"),
-                UIMessage.user("随便搜一个新闻，测试工具调用"),
+                UIMessage.user("查询公园公告以验证搜索结果。"),
             )
             val events = withTimeout(10_000) {
                 runAgent(
@@ -170,9 +170,9 @@ class SearchToolRoundTripTest {
             val payload = Json.parseToJsonElement(replayedOutput.getValue("output").jsonPrimitive.content).jsonObject
             assertNotNull(payload["retrievedAt"])
             val item = payload.getValue("items").jsonArray.single().jsonObject
-            assertEquals("天舟八号 & 新闻", item.getValue("title").jsonPrimitive.content)
+            assertEquals("海滨公园 & 新闻", item.getValue("title").jsonPrimitive.content)
             assertEquals("https://example.org/news?q=1&lang=zh", item.getValue("url").jsonPrimitive.content)
-            assertEquals("原始摘要：发射成功。", item.getValue("text").jsonPrimitive.content)
+            assertEquals("原始摘要：新馆开放。", item.getValue("text").jsonPrimitive.content)
             assertEquals(1, item.getValue("index").jsonPrimitive.int)
             assertEquals(6, item.getValue("id").jsonPrimitive.content.length)
         } finally {

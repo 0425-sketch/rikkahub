@@ -217,13 +217,15 @@ class ProviderAccountManagerTest {
         }
     }
     @Test
-    fun `JWKS outage saves rotated response and restart validates it without reusing old refresh`() = runBlocking {
+    fun `rotation is already durable before JWKS and resumes after restart without exchanging twice`() = runBlocking {
         val key = RSAKeyGenerator(2048).keyID("rotation-key").generate()
         val idToken = SignedJWT(
             JWSHeader.Builder(JWSAlgorithm.RS256).keyID("rotation-key").build(),
             JWTClaimsSet.Builder().issuer(ChatGPTAuth.ISSUER).audience("oaiapp_test").subject("subject")
                 .issueTime(Date()).expirationTime(Date(System.currentTimeMillis() + 3_600_000)).build(),
         ).apply { sign(RSASSASigner(key)) }.serialize()
+        val file = File(temp.newFolder(), "settings.preferences_pb")
+        val interruptedSnapshot = File(temp.newFolder(), "settings.preferences_pb")
         val tokenCalls = AtomicInteger()
         val jwksCalls = AtomicInteger()
         val client = OkHttpClient.Builder().addInterceptor { chain ->
@@ -233,12 +235,14 @@ class ProviderAccountManagerTest {
                     tokenCalls.incrementAndGet()
                     response(request, """{"access_token":"rotated","refresh_token":"rotated-refresh","expires_in":3600,"id_token":"$idToken"}""")
                 }
-                "/.well-known/jwks.json" -> if (jwksCalls.incrementAndGet() == 1) response(request, "unavailable", 503)
-                    else response(request, JWKSet(key.toPublicJWK()).toString())
+                "/.well-known/jwks.json" -> if (jwksCalls.incrementAndGet() == 1) {
+                    // Snapshot the actual persisted settings before any response or error returns.
+                    file.copyTo(interruptedSnapshot)
+                    response(request, "unavailable", 503)
+                } else response(request, JWKSet(key.toPublicJWK()).toString())
                 else -> error("Unexpected endpoint")
             }
         }.build()
-        val file = File(temp.newFolder(), "settings.preferences_pb")
         val provider = ProviderSetting.ChatGPT(credential = original,
             chatGPTRegistration = ChatGPTRegistration("oaiapp_test", subject = "subject"))
         var scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -254,8 +258,10 @@ class ProviderAccountManagerTest {
             assertFalse(pending.pendingRefresh.toString().contains("rotated-refresh"))
             scope.coroutineContext.job.cancelAndJoin()
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            store = SettingsStore(PreferenceDataStoreFactory.create(scope = scope) { file }, scope)
-            store.awaitLoaded()
+            store = SettingsStore(PreferenceDataStoreFactory.create(scope = scope) { interruptedSnapshot }, scope)
+            val interrupted = store.awaitLoaded().providers.filterIsInstance<ProviderSetting.ChatGPT>().single().credential!!
+            assertEquals("rotated-refresh", interrupted.pendingRefresh?.refreshToken)
+            assertFalse(interrupted.hasChatGPTPlanAccess)
             manager = ProviderAccountManager(store, scope, client)
             val restored = manager.getCredential(provider, null)
             assertEquals("rotated", restored.accessToken)
@@ -291,14 +297,20 @@ class ProviderAccountManagerTest {
     }
 
     @Test
-    fun `short lived valid response does not cause recursive refresh loop`() = runBlocking {
+    fun `short lived tokens serve concurrent requests and a 401 still forces rotation`() = runBlocking {
         val calls = AtomicInteger()
         withManager({ request ->
-            calls.incrementAndGet()
-            response(request, """{"access_token":"short-lived","refresh_token":"next-refresh","expires_in":60}""")
+            val count = calls.incrementAndGet()
+            response(request, """{"access_token":"short-$count","refresh_token":"refresh-$count","expires_in":60}""")
         }) { _, manager, provider ->
-            assertEquals("short-lived", manager.getCredential(provider, null).accessToken)
+            val first = manager.getCredential(provider, null)
+            assertEquals("short-1", first.accessToken)
+            val reused = coroutineScope { List(6) { async { manager.getCredential(provider, null) } }.awaitAll() }
+            assertTrue(reused.all { it == first })
             assertEquals(1, calls.get())
+            assertEquals("short-2", manager.getCredential(provider, first.accessToken).accessToken)
+            assertEquals("short-2", manager.getCredential(provider, first.accessToken).accessToken)
+            assertEquals(2, calls.get())
         }
     }
 
