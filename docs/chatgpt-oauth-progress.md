@@ -1,12 +1,18 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 自用 3.3.0-personal.2 更新准备
+## 最新交付：3.3.0-personal.2（2026-11-18 UTC）
+
+[公开下载 ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-aaf388649efe-44284349092-1/rikkahub-3.3.0-personal.2-aaf388649efe-arm64.apk) · [Release、校验和与构建证明](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-aaf388649efe-44284349092-1) · [Actions 44284349092](https://github.com/0425-sketch/rikkahub/actions/runs/44284349092)
+
+构建源码 `aaf388649efea604c7be2c00b0a431dc4f96bbda`。已从公开链接独立下载四个附件。APK 为 61,134,701 字节，SHA-256 为 `334f87542541263991208794f3ff7aa0ebe0ce37162e29dcd9eddbfa337678f1`。实际新旧 APK 经 apksigner 和 aapt2 验证，同为 `me.rerere.rikkahub.personal`、同固定证书，版本码 201 → 202；主备签名在独立 runner 恢复成功。
+
+本地七模块 JVM 测试 1,200 项通过，1 项缺可选外部 DeepSeek 样本跳过。AndroidTest 编译及 54 项 Python 检查通过。DownloadManager 的通知、目标、APK 类型与手动安装流程用 Robolectric 验证。本轮未执行实体手机安装或真实账号在线测试。
 
 版本码 202。已有 personal.1 仍使用上游更新源，首次需从本 fork 的 Release 手动下载 APK 覆盖安装。自 personal.2 起，聊天抽屉的更新提示按已发布 personal 构建的 Android 版本码判断，支持预发布。点下载后使用系统下载管理器，完成后手动安装。继续沿用原包名与固定证书。
 
 ChatGPT 模型目录供单选、全选和刷新使用。旧模型的能力来源未被记录，可在模型编辑页选“使用账号目录的输入、输出和模型能力”，保留 UUID、窗口和聊天引用。刷新令牌会在联网验签前保存待验证结果。自动压缩入口指出缺失的窗口或本轮输入用量，等待中的流式统计单独显示。普通 Responses 路由的工具参数只保留实际使用的状态。
 
-## 最新交付：3.3.0-personal.1（2026-11-17 UTC）
+## 历史交付：3.3.0-personal.1（2026-11-17 UTC）
 
 **用户授权的Release已发布，公开下载与本地独立验签全部完成。** 构建源码 `4ac14e80bb2400802907cdb7747befeb24874bb1`，Actions `44074740868` 全部成功。应用代码整合正式tag `3.3.0`；完整变更、迁移、测试和性能记录见 [3.3.0升级报告](custom-3.3.0-upgrade.md)。
 
