@@ -1,10 +1,20 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 最新交付与开发基线 · 203 / 3.3.0-personal.3-images（2026-11-19 UTC）
+## 最新交付与开发基线 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
 
-203 是已签名的 ARM64 图像功能测试包，对应源码 `2c1b470bdaeeecc8cb37ff74f42e9b56590f8082` 已合入默认分支 `custom-3.2.0`。自用安装包和打包校验脚本的版本均为 `203 / 3.3.0-personal.3-images`。后续开发直接从最新默认分支开始。下一次可覆盖更新的安装包应使用高于 203 的版本码。[203 源码](https://github.com/0425-sketch/rikkahub/commit/2c1b470bdaeeecc8cb37ff74f42e9b56590f8082) · [签名构建](https://github.com/0425-sketch/rikkahub/actions/runs/44525982173)
+204 已在自用仓库发布为预发布版，包含 203 的 OpenAI Platform 图像功能。202 和 203 均可从聊天侧栏直接发现并下载 204，由 Android 确认覆盖安装。后续开发从远端默认分支 `custom-3.2.0` 的最新提交开始。[预发布与附件](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-1ed6047a10e6-44632703073-1) · [APK 构建源码](https://github.com/0425-sketch/rikkahub/commit/1ed6047a10e64ded98b64ad9ef6f167eeed0cd26) · [构建记录](https://github.com/0425-sketch/rikkahub/actions/runs/44632703073)
 
-主备构建产物逐字节一致，APK 的 SHA-256 为 `6888fba3c6722753fbc7d2a82b73099a7ee4498684f7d6c3dcad578ce27cf5f6`。已核对它与 202 的包名及固定证书一致。203 通过 Actions 产物交付，最近一次 Release 为下节的 202。
+已用 202 发布源码的 `PersonalReleaseFeed` 匿名读取线上发布列表和构建证明。已装 202 与 203 时均返回同一个 204 APK，已装 204 时返回无更新。此前 203 通过 Actions 产物分发，202 的更新器读取 GitHub Releases，且要求版本名以 `-personal.<正整数>` 结尾。发布门禁现已检查此命名规则，图像版使用版本码 204、版本名 `3.3.0-personal.4`。[202 的更新检查代码](https://github.com/0425-sketch/rikkahub/blob/aaf388649efea604c7be2c00b0a431dc4f96bbda/app/src/main/java/me/rerere/rikkahub/utils/PersonalReleaseFeed.kt)
+
+已从 202 选出的公开地址下载 APK 并独立验签。202、203、204 的包名均为 `me.rerere.rikkahub.personal`，签名证书 SHA-256 均为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`。204 的 ARM64 APK 共 61,361,521 字节，SHA-256 为 `e38f5055bb262a5ff8d6dd9fb43a5e64395f7fbadeebedc0f40ff927e853c4af`。两台独立构建机均成功恢复签名并完成构建。[公开构建证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-1ed6047a10e6-44632703073-1/build-provenance.json)
+
+九个模块的 JVM 回归共 1,276 项通过、0 项失败、1 项跳过。跳过项为可选的 DeepSeek 真实归档导入测试，CI 未提供 `DEEPSEEK_IMPORT_TEST_ARCHIVE`。54 项 Python 检查与 Android 仪器测试源码编译通过。用户手机上的提示、安装及真实账号的图像调用仍需在设备上体验。[JUnit 报告](https://github.com/0425-sketch/rikkahub/actions/runs/44632703073/artifacts/14582338745)
+
+## 签名测试包 · 203 / 3.3.0-personal.3-images（2026-11-19 UTC）
+
+203 是已签名的 ARM64 图像功能测试包，对应源码 `2c1b470bdaeeecc8cb37ff74f42e9b56590f8082` 已合入默认分支 `custom-3.2.0`。自用安装包和打包校验脚本的版本均为 `203 / 3.3.0-personal.3-images`。[203 源码](https://github.com/0425-sketch/rikkahub/commit/2c1b470bdaeeecc8cb37ff74f42e9b56590f8082) · [签名构建](https://github.com/0425-sketch/rikkahub/actions/runs/44525982173)
+
+主备构建产物逐字节一致，APK 的 SHA-256 为 `6888fba3c6722753fbc7d2a82b73099a7ee4498684f7d6c3dcad578ce27cf5f6`。已核对它与 202 的包名及固定证书一致。203 交付时可在应用内发现的版本为下节的 202。
 
 ## 上一次 Release · 202 / 3.3.0-personal.2（2026-11-18 UTC）
 
