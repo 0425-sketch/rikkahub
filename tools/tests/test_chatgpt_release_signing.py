@@ -29,8 +29,8 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
         self.assertEqual(release.VERSION_NAME, re.search(r'val personalVersionName = "([^"]+)"', source)[1])
         self.assertIn("output.versionCode.set(personalVersionCode)", source)
         self.assertIn("output.versionName.set(personalVersionName)", source)
-        self.assertGreater(release.VERSION_CODE, 202)
-        self.assertEqual("3.3.0-personal.3-images", release.VERSION_NAME)
+        self.assertGreater(release.VERSION_CODE, 203)
+        self.assertRegex(release.VERSION_NAME, r"\A[0-9]+\.[0-9]+\.[0-9]+-personal\.[1-9][0-9]*\Z")
 
     def test_inspection_rejects_unsigned_apk_before_publication(self):
         with tempfile.TemporaryDirectory() as tmp, \
@@ -42,7 +42,7 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
 
     def test_inspection_rejects_old_personal_version_with_valid_signature(self):
         signature = f"Signer certificate SHA-256 digest: {CERT}\n"
-        badging = "package: name='me.rerere.rikkahub.personal' versionCode='202' versionName='3.3.0-personal.2'\n"
+        badging = "package: name='me.rerere.rikkahub.personal' versionCode='203' versionName='3.3.0-personal.3-images'\n"
         with tempfile.TemporaryDirectory() as tmp, patch.object(release.subprocess, "run", side_effect=[
             subprocess.CompletedProcess([], 0, stdout=signature),
             subprocess.CompletedProcess([], 0, stdout=badging),

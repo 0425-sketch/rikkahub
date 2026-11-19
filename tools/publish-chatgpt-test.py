@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 203
-VERSION_NAME = "3.3.0-personal.3-images"
+VERSION_CODE = 204
+VERSION_NAME = "3.3.0-personal.4"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 
@@ -217,9 +217,9 @@ def main():
     notes = args.output / "release-notes.txt"
     notes.write_text(
         f"RikkaHub {VERSION_NAME}\n\n"
-        "这个版本修正了 ChatGPT 模型能力、令牌刷新、自动压缩提示和流式工具处理。\n"
-        "更新提醒现在读取本仓库的自用版本，可以在 App 内下载，完成后手动安装。\n\n"
-        "从旧自用版升级，请先下载下方 ARM64 APK，直接覆盖安装，保留聊天和设置。\n\n"
+        "在「媒体生成 → 提供商」选择「OpenAI Platform 图像」，填写 Platform API Key，即可使用 GPT Image 2.6 Sunburst 和 Flare。\n"
+        "选中某张结果可继续编辑、涂选局部或添加标注，也可以从旧版分叉。可选的 SIWC 历史理解使用 ChatGPT 套餐额度，实际生图和改图使用 Platform API 额度。\n\n"
+        "已安装自用版 202 的用户可从聊天侧栏下载本次更新，再按 Android 提示覆盖安装，保留原有聊天和设置。\n\n"
         f"[构建源码](https://github.com/{REPO}/commit/{source_sha}) · [构建记录]({metadata['actions_url']})\n\n"
         f"APK SHA-256 `{metadata['apk_sha256']}`\n\n"
         f"<!-- rikkahub-personal-version-code: {VERSION_CODE} -->\n",

@@ -107,7 +107,7 @@ jobs:
           -Pkotlin.compiler.execution.strategy=in-process \
           --rerun-tasks \
           :oauth:testDebugUnitTest :ai:testDebugUnitTest :common:testDebugUnitTest \
-          :search:testDebugUnitTest :speech:testDebugUnitTest :workspace:testDebugUnitTest \
+          :mediagen:testDebugUnitTest :ui:testDebugUnitTest :search:testDebugUnitTest :speech:testDebugUnitTest :workspace:testDebugUnitTest \
           :app:testGithubDebugUnitTest :app:compileGithubDebugAndroidTestKotlin
     - name: Check signing, publication and database guards
       run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/tests -p 'test_*.py'
@@ -120,6 +120,8 @@ jobs:
         path: |-
           oauth/build/test-results/testDebugUnitTest/*.xml
           ai/build/test-results/testDebugUnitTest/*.xml
+          mediagen/build/test-results/testDebugUnitTest/*.xml
+          ui/build/test-results/testDebugUnitTest/*.xml
           search/build/test-results/testDebugUnitTest/*.xml
           common/build/test-results/testDebugUnitTest/*.xml
           speech/build/test-results/testDebugUnitTest/*.xml
