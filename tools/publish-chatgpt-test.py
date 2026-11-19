@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 202
-VERSION_NAME = "3.3.0-personal.2"
+VERSION_CODE = 203
+VERSION_NAME = "3.3.0-personal.3-images"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 

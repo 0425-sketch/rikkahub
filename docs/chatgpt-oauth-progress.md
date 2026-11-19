@@ -2,7 +2,7 @@
 
 ## 最新交付与开发基线 · 203 / 3.3.0-personal.3-images（2026-11-19 UTC）
 
-203 是已签名的 ARM64 图像功能测试包。下次更新从它的准确源码 `2c1b470bdaeeecc8cb37ff74f42e9b56590f8082` 接续，同时纳入 `custom-3.2.0` 的后续改动。默认分支已包含功能提交 `6a31b595`。与该提交相比，203 的源码只调整了 `app/build.gradle.kts` 和 `tools/publish-chatgpt-test.py` 中的版本名和版本码。下一次可覆盖更新的安装包应使用高于 203 的版本码。[203 源码](https://github.com/0425-sketch/rikkahub/commit/2c1b470bdaeeecc8cb37ff74f42e9b56590f8082) · [签名构建](https://github.com/0425-sketch/rikkahub/actions/runs/44525982173)
+203 是已签名的 ARM64 图像功能测试包，对应源码 `2c1b470bdaeeecc8cb37ff74f42e9b56590f8082` 已合入默认分支 `custom-3.2.0`。自用安装包和打包校验脚本的版本均为 `203 / 3.3.0-personal.3-images`。后续开发直接从最新默认分支开始。下一次可覆盖更新的安装包应使用高于 203 的版本码。[203 源码](https://github.com/0425-sketch/rikkahub/commit/2c1b470bdaeeecc8cb37ff74f42e9b56590f8082) · [签名构建](https://github.com/0425-sketch/rikkahub/actions/runs/44525982173)
 
 主备构建产物逐字节一致，APK 的 SHA-256 为 `6888fba3c6722753fbc7d2a82b73099a7ee4498684f7d6c3dcad578ce27cf5f6`。已核对它与 202 的包名及固定证书一致。203 通过 Actions 产物交付，最近一次 Release 为下节的 202。
 
