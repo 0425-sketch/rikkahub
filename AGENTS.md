@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+## 自用分支的开发起点
+
+在 `0425-sketch/rikkahub` 接续开发时，先核对远端默认分支，再读[主交接记录](docs/chatgpt-oauth-progress.md)顶部的最新交付。以记录中最新签名 APK 的源码提交为更新基线，同时保留默认分支在该次交付之后的改动。签名测试包也计入交付版本。
+
 ## Project Overview
 
 RikkaHub is a native Android LLM chat client that supports switching between different AI providers
