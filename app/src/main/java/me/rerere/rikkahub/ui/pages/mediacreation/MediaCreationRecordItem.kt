@@ -33,6 +33,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -78,6 +79,8 @@ import me.rerere.hugeicons.stroke.Tick02
 import me.rerere.hugeicons.stroke.Video01
 import me.rerere.mediagen.model.ImageRole
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.files.FileUtils
+import me.rerere.rikkahub.data.model.supportsPlatformEditing
 import me.rerere.rikkahub.data.model.MediaCreationAsset
 import me.rerere.rikkahub.data.model.MediaCreationAssetType
 import me.rerere.rikkahub.data.model.MediaCreationNode
@@ -98,7 +101,7 @@ import java.time.Instant
 import java.time.ZoneId
 
 /** 正在全屏查看的文件。 */
-private data class MediaPreview(val file: File, val isVideo: Boolean)
+private data class MediaPreview(val file: File, val isVideo: Boolean, val mimeType: String? = null)
 
 /**
  * 时间线上的一项，显示它当前选中的版本：上面是这次生成的输入，下面是进度或产出，
@@ -114,6 +117,7 @@ internal fun MediaCreationRecordItem(
     selected: Boolean?,
     vm: MediaCreationVM,
     modifier: Modifier = Modifier,
+    onEditImage: ((MediaCreationOutput) -> Unit)? = null,
 ) {
     val record = node.record
     var preview by remember { mutableStateOf<MediaPreview?>(null) }
@@ -151,19 +155,25 @@ internal fun MediaCreationRecordItem(
                 RecordInput(
                     record = record,
                     resolve = vm::resolve,
+                    platform = onEditImage != null,
                     onPreview = { preview = it },
                 )
                 when {
-                    record.status.isActive -> RecordProgress(record)
+                    record.status.isActive -> {
+                        RecordProgress(record)
+                        if (onEditImage != null) PlatformStreamPreview(record.id, vm)
+                    }
+
                     record.status == MediaCreationStatus.SUCCEEDED -> RecordOutputs(
                         record = record,
                         vm = vm,
+                        onEditImage = onEditImage,
                         onPreview = { preview = it },
                     )
 
                     else -> RecordFailure(record)
                 }
-                RecordActions(node = node, vm = vm)
+                RecordActions(node = node, vm = vm, platform = onEditImage != null)
             }
             if (selected != null) {
                 // 盖在内容上面，接住所有点按
@@ -187,7 +197,23 @@ internal fun MediaCreationRecordItem(
         if (target.isVideo) {
             VideoPlayerDialog(file = target.file, onDismissRequest = { preview = null })
         } else {
-            ImagePreviewDialog(images = listOf(target.file.absolutePath), onDismissRequest = { preview = null })
+            val context = LocalContext.current
+            val toaster = LocalToaster.current
+            val mime = target.mimeType ?: remember(target.file) { FileUtils.guessMimeType(target.file, target.file.name) }
+            ImagePreviewDialog(
+                images = listOf(target.file.absolutePath),
+                onSave = { saveMediaToGallery(context, target.file, mime) },
+                actions = {
+                    IconButton(onClick = {
+                        runCatching { shareMedia(context, target.file, mime) }.onFailure {
+                            toaster.show(it.message ?: context.getString(R.string.media_creation_page_share_failed), ToastType.Error)
+                        }
+                    }) {
+                        Icon(HugeIcons.Share01, stringResource(R.string.share), tint = Color.White)
+                    }
+                },
+                onDismissRequest = { preview = null },
+            )
         }
     }
 }
@@ -225,6 +251,7 @@ private fun SelectionMark(selected: Boolean, modifier: Modifier = Modifier) {
 private fun RecordInput(
     record: MediaCreationRecord,
     resolve: (String) -> File,
+    platform: Boolean,
     onPreview: (MediaPreview) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -235,20 +262,30 @@ private fun RecordInput(
             ) {
                 // 只有区分角色的输入才标注，纯参考图不需要说明
                 val showRoles = record.inputs.any { it.type == MediaCreationAssetType.IMAGE && it.role != ImageRole.REFERENCE }
-                record.inputs.forEach { asset ->
+                record.inputs.forEachIndexed { index, asset ->
                     InputThumbnail(
                         asset = asset,
-                        file = resolve(asset.path),
-                        showRole = showRoles,
+                        file = resolve(record.params.imageEdit?.originalBasePath?.takeIf { index == 0 } ?: asset.path),
+                        roleLabel = when {
+                            platform -> if (index == 0) "底图" else "参考图 $index"
+                            showRoles -> asset.role.label
+                            else -> null
+                        },
                         onPreview = onPreview,
                     )
                 }
             }
         }
+        val originalInstruction = record.params.imageEdit?.originalInstruction?.takeUnless { it == record.prompt }
+        if (platform) PlatformEditSource(record, originalInstruction)
         if (record.prompt.isNotBlank()) {
             var expanded by remember { mutableStateOf(false) }
             Text(
-                text = record.prompt,
+                text = if (originalInstruction != null) {
+                    "实际编辑指令 · ${record.prompt}"
+                } else {
+                    record.prompt
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = if (expanded) Int.MAX_VALUE else 4,
                 overflow = TextOverflow.Ellipsis,
@@ -258,11 +295,13 @@ private fun RecordInput(
         val time = remember(record.createAt) {
             record.createAt.atZone(ZoneId.systemDefault()).toLocalDateTime().toMessageTimeString()
         }
+        val parameters = if (platform) record.params.platformSummary() else record.params.summary(record.kind)
         Text(
-            text = (listOf(record.modelId) + record.params.summary(record.kind) + time).joinToString(" · "),
+            text = (listOf(record.modelId) + parameters + time).joinToString(" · "),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (platform) PlatformReturnedSettings(record)
     }
 }
 
@@ -270,7 +309,7 @@ private fun RecordInput(
 private fun InputThumbnail(
     asset: MediaCreationAsset,
     file: File,
-    showRole: Boolean,
+    roleLabel: String?,
     onPreview: (MediaPreview) -> Unit,
 ) {
     val isVideo = asset.type == MediaCreationAssetType.VIDEO
@@ -286,9 +325,9 @@ private fun InputThumbnail(
             modifier = Modifier.fillMaxSize(),
             playIconSize = 8.dp,
         )
-        if (showRole && !isVideo) {
+        if (roleLabel != null && !isVideo) {
             Text(
-                text = asset.role.label,
+                text = roleLabel,
                 style = MaterialTheme.typography.labelSmall,
                 color = Color.White,
                 modifier = Modifier
@@ -373,6 +412,7 @@ private const val OUTPUT_COLUMNS = 3
 private fun RecordOutputs(
     record: MediaCreationRecord,
     vm: MediaCreationVM,
+    onEditImage: ((MediaCreationOutput) -> Unit)?,
     onPreview: (MediaPreview) -> Unit,
 ) {
     val outputs = record.outputs
@@ -381,12 +421,14 @@ private fun RecordOutputs(
         OutputTile(
             output = outputs.single(),
             vm = vm,
+            onEditImage = onEditImage,
             onPreview = onPreview,
             modifier = Modifier.sizeIn(maxWidth = SingleOutputMaxWidth, maxHeight = OutputMaxHeight),
         )
     } else {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            outputs.chunked(OUTPUT_COLUMNS).forEach { row ->
+            val columns = if (onEditImage != null) 2 else OUTPUT_COLUMNS
+            outputs.chunked(columns).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { output ->
                         // 每格宽度固定，太高的竖图在格子里按高度上限缩小
@@ -394,13 +436,14 @@ private fun RecordOutputs(
                             OutputTile(
                                 output = output,
                                 vm = vm,
+                                onEditImage = onEditImage,
                                 onPreview = onPreview,
                                 modifier = Modifier.heightIn(max = OutputMaxHeight),
                             )
                         }
                     }
                     // 没摆满的一行用空格占位，每格宽度保持一致
-                    repeat(OUTPUT_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -418,15 +461,26 @@ private fun MediaCreationOutput.aspectRatio(): Float {
 private fun OutputTile(
     output: MediaCreationOutput,
     vm: MediaCreationVM,
+    onEditImage: ((MediaCreationOutput) -> Unit)?,
     onPreview: (MediaPreview) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val file = remember(output.path) { vm.resolve(output.path) }
+    val actionLabel = when {
+        onEditImage == null -> null
+        output.supportsPlatformEditing -> "编辑这张图"
+        output.mimeType == "image/gif" -> "预览 GIF 动画"
+        output.mimeType == "image/svg+xml" -> "预览 SVG 原件"
+        else -> null
+    }
+    fun previewOriginal() = onPreview(MediaPreview(file, output.isVideo, output.mimeType))
     Box(
         modifier = modifier
             .aspectRatio(output.aspectRatio())
             .clip(RoundedCornerShape(12.dp))
-            .clickable { onPreview(MediaPreview(file, output.isVideo)) },
+            .clickable(onClickLabel = actionLabel) {
+                if (onEditImage != null && output.supportsPlatformEditing) onEditImage(output) else previewOriginal()
+            },
     ) {
         MediaThumbnail(
             file = file,
@@ -446,10 +500,22 @@ private fun OutputTile(
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }
+        if (actionLabel != null) {
+            Text(
+                actionLabel,
+                color = Color.White,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
         OutputMenu(
             output = output,
             file = file,
             vm = vm,
+            platform = onEditImage != null,
+            onPreview = ::previewOriginal,
             modifier = Modifier.align(Alignment.TopEnd),
         )
     }
@@ -461,6 +527,8 @@ private fun OutputMenu(
     output: MediaCreationOutput,
     file: File,
     vm: MediaCreationVM,
+    platform: Boolean,
+    onPreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -498,6 +566,9 @@ private fun OutputMenu(
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            if (platform && !output.isVideo) {
+                MenuItem("查看原图", HugeIcons.ImageAdd01, onPreview)
+            }
             if (output.isVideo) {
                 MenuItem(stringResource(R.string.media_creation_page_continue_video_long), HugeIcons.Video01) {
                     vm.continueVideo(output)
@@ -505,7 +576,7 @@ private fun OutputMenu(
                 MenuItem(stringResource(R.string.media_creation_page_use_as_reference_video), HugeIcons.ImageAdd01) {
                     vm.useVideo(output)
                 }
-            } else {
+            } else if (!platform || output.supportsPlatformEditing) {
                 MenuItem(stringResource(R.string.media_creation_page_use_as_reference_image), HugeIcons.ImageAdd01) {
                     vm.useImage(output, ImageRole.REFERENCE)
                 }
@@ -516,12 +587,16 @@ private fun OutputMenu(
                     vm.useImage(output, ImageRole.LAST_FRAME)
                 }
             }
-            MenuItem(stringResource(R.string.media_creation_page_save_to_gallery), HugeIcons.Download01) {
+            val vector = output.mimeType == "image/svg+xml"
+            MenuItem(
+                if (vector) "保存 SVG 原件到下载目录" else stringResource(R.string.media_creation_page_save_to_gallery),
+                HugeIcons.Download01,
+            ) {
                 scope.launch {
                     runCatching { saveMediaToGallery(context, file, output.mimeType) }
                         .onSuccess {
                             toaster.show(
-                                context.getString(R.string.media_creation_page_saved_to_gallery),
+                                if (vector) "SVG 原件已保存到下载目录" else context.getString(R.string.media_creation_page_saved_to_gallery),
                                 type = ToastType.Success,
                             )
                         }
@@ -550,6 +625,7 @@ private fun OutputMenu(
 private fun RecordActions(
     node: MediaCreationNode,
     vm: MediaCreationVM,
+    platform: Boolean,
 ) {
     val record = node.record
     val hasVersions = node.versionCount > 1
@@ -579,7 +655,7 @@ private fun RecordActions(
                                 stringResource(R.string.media_creation_page_continue_video),
                                 HugeIcons.Video01,
                             ) { vm.continueVideo(output) }
-                        } else {
+                        } else if (!platform || output.supportsPlatformEditing) {
                             ActionChip(
                                 stringResource(R.string.media_creation_page_use_as_reference),
                                 HugeIcons.ImageAdd01,
@@ -615,7 +691,10 @@ private fun RecordActions(
                     }
                 }
             }
-            ActionChip(stringResource(R.string.media_creation_page_edit), HugeIcons.PencilEdit01) {
+            ActionChip(
+                if (platform) "恢复提示词和参数" else stringResource(R.string.media_creation_page_edit),
+                HugeIcons.PencilEdit01,
+            ) {
                 vm.editFrom(record)
             }
             // 次要操作只放图标，跟在后面一起换行，不再收进弹出菜单

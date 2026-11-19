@@ -35,6 +35,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.rerere.ai.provider.ProviderManager
+import me.rerere.rikkahub.data.ai.imagehistory.needsImageHistory
+import me.rerere.rikkahub.data.files.PlatformImageFiles
+import me.rerere.rikkahub.data.model.MediaImageVersionId
+import me.rerere.rikkahub.data.model.PlatformImageEditHistory
 import me.rerere.mediagen.model.ImageRole
 import me.rerere.mediagen.model.MediaGenerationModel
 import me.rerere.mediagen.model.MediaKind
@@ -90,6 +95,12 @@ data class MediaCreationSubmitted(
 sealed interface MediaCreationEvent {
     data class Error(val message: String) : MediaCreationEvent
 
+    data class ChooseHistoryBase(
+        val selection: MediaCreationModelSelection,
+        val draft: MediaCreationDraft,
+        val bases: List<MediaCreationAsset>,
+    ) : MediaCreationEvent
+
     /** 当前模型的素材需要公网地址，但还没有配置上传用的 S3。 */
     data object UploadNotConfigured : MediaCreationEvent
 
@@ -107,6 +118,7 @@ class MediaCreationVM(
     private val service: MediaCreationService,
     private val remoteFileStore: RemoteFileStore,
     private val appScope: AppScope,
+    chatProviders: ProviderManager,
 ) : ViewModel() {
     val sessionId: Uuid = Uuid.parse(id)
 
@@ -158,6 +170,13 @@ class MediaCreationVM(
 
     /** 多选时选中的项；null 表示不在多选状态。 */
     val selectedNodes: StateFlow<Set<Uuid>?> = _selectedNodes.asStateFlow()
+
+    val previews = service.previews
+    internal val platformEditor = PlatformImageWorkflow(
+        sessionId, repository, settingsStore, chatProviders, service,
+    ) { record ->
+        _submitted.emit(MediaCreationSubmitted(record.nodeId, repository.getNodePosition(record.nodeId)))
+    }
 
     // 输入区最近一次提交，还没有结果时不接受下一次
     private var generateJob: Job? = null
@@ -254,13 +273,15 @@ class MediaCreationVM(
     /** 把相册里选的文件导入草稿。 */
     fun importAssets(uris: List<Uri>, type: MediaCreationAssetType, role: ImageRole) {
         if (draftState.value == null || uris.isEmpty()) return
+        val platform = currentSelection()?.provider is MediaGenerationProviderSetting.OpenAIPlatform
         viewModelScope.launch {
             val dir = repository.draftDir(sessionId)
             val files = withContext(Dispatchers.IO) {
                 uris.mapNotNull { uri ->
                     runCatching {
                         when (type) {
-                            MediaCreationAssetType.IMAGE -> MediaCreationFiles.importImage(context, uri, dir)
+                            MediaCreationAssetType.IMAGE -> if (platform) PlatformImageFiles.importImage(context, uri, dir)
+                                else MediaCreationFiles.importImage(context, uri, dir)
                             MediaCreationAssetType.VIDEO -> MediaCreationFiles.importVideo(context, uri, dir)
                         }
                     }.onFailure {
@@ -323,7 +344,12 @@ class MediaCreationVM(
     fun useImage(output: MediaCreationOutput, role: ImageRole) {
         viewModelScope.launch {
             if (!ensureModel { role in it.imageRoles }) return@launch
-            addCopy(output.path, MediaCreationAssetType.IMAGE, role)
+            val version = if (currentSelection()?.capabilities?.platformImages == true) {
+                repository.getRecordsOfSession(sessionId).firstNotNullOfOrNull { record ->
+                    record.outputs.indexOf(output).takeIf { it >= 0 }?.let { MediaImageVersionId(record.id, it) }
+                }
+            } else null
+            addCopy(output.path, MediaCreationAssetType.IMAGE, role, version)
         }
     }
 
@@ -355,13 +381,16 @@ class MediaCreationVM(
         }
     }
 
-    private suspend fun addCopy(path: String, type: MediaCreationAssetType, role: ImageRole = ImageRole.REFERENCE) {
+    private suspend fun addCopy(
+        path: String, type: MediaCreationAssetType, role: ImageRole = ImageRole.REFERENCE,
+        version: MediaImageVersionId? = null,
+    ) {
         val copy = copyToDraft(path)
         if (copy == null) {
             _events.send(MediaCreationEvent.Error(context.getString(R.string.media_creation_page_asset_add_failed)))
             return
         }
-        addAsset(MediaCreationAsset(copy, type, role))
+        addAsset(MediaCreationAsset(copy, type, role, version))
     }
 
     /**
@@ -387,6 +416,10 @@ class MediaCreationVM(
     private fun MediaCreationDraft.withAssets(assets: List<MediaCreationAsset>): MediaCreationDraft {
         val capabilities = currentSelection(this)?.capabilities
         val supported = if (capabilities != null) assets.distinct().supportedBy(capabilities) else assets.distinct()
+        if (capabilities?.platformImages == true && supported.size > MAX_ASSETS) {
+            _events.trySend(MediaCreationEvent.Error("底图和参考图合计最多 16 张"))
+            return this
+        }
         return copy(assets = supported.takeLast(MAX_ASSETS))
     }
 
@@ -434,6 +467,23 @@ class MediaCreationVM(
             return
         }
         if (!submitted.canSubmit(selection.capabilities)) return
+        if (submitted.needsPlatformHistory(selection.capabilities)) {
+            generateJob = viewModelScope.launch {
+                try {
+                    val bases = platformEditor.composerBases(submitted)
+                    if (bases.isEmpty()) {
+                        _events.send(MediaCreationEvent.Error("当前会话没有可编辑的历史图片，请先添加底图或手动选择参考图"))
+                    } else if (matchesDraft(submitted)) {
+                        _events.send(MediaCreationEvent.ChooseHistoryBase(selection, submitted, bases))
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _events.send(MediaCreationEvent.Error(e.message ?: "读取本地图片历史失败"))
+                }
+            }
+            return
+        }
         generateJob = submit(
             MediaCreationSubmission(
                 sessionId = sessionId,
@@ -441,7 +491,12 @@ class MediaCreationVM(
                 provider = selection.provider,
                 model = selection.model,
                 prompt = submitted.prompt,
-                params = submitted.params,
+                params = if (selection.capabilities.platformImages && submitted.assets.isNotEmpty()) {
+                    submitted.params.copy(imageEdit = PlatformImageEditHistory(
+                        parent = submitted.assets.first().version,
+                        references = submitted.assets.drop(1).mapNotNull { it.version },
+                    ))
+                } else submitted.params,
                 assets = submitted.assets,
             ),
             selection.capabilities,
@@ -457,6 +512,13 @@ class MediaCreationVM(
                 }
             }
         }
+    }
+
+    private fun matchesDraft(source: MediaCreationDraft): Boolean =
+        draftState.value?.copy(prompt = promptState.text.toString()) == source
+
+    internal fun clearSubmittedEditorDraft(source: MediaCreationDraft) {
+        if (matchesDraft(source)) clearDraft()
     }
 
     /** 用同样的输入和参数再生成一次，作为同一项的新版本。 */
@@ -523,7 +585,7 @@ class MediaCreationVM(
             draft.copy(
                 modelId = model?.id ?: draft.modelId,
                 prompt = record.prompt,
-                params = if (model != null) record.params else draft.params,
+                params = if (model != null) record.params.copy(imageEdit = null, imageResult = null) else draft.params,
                 editingNodeId = record.nodeId,
             ).withAssets(record.inputs)
         }
@@ -630,3 +692,8 @@ private fun List<MediaGenerationProviderSetting>.findSelection(modelId: Uuid?): 
     }
     return null
 }
+
+
+// An explicit base plus one or more user-picked references completely specifies a direct Platform edit.
+internal fun MediaCreationDraft.needsPlatformHistory(capabilities: MediaGenerationCapabilities): Boolean =
+    capabilities.platformImages && editingNodeId == null && assets.size <= 1 && needsImageHistory(prompt)

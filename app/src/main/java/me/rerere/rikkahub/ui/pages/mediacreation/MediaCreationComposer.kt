@@ -113,6 +113,7 @@ import me.rerere.mediagen.provider.MediaGenerationParameter
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
 import me.rerere.mediagen.provider.capabilities
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.model.supportsPlatformEditing
 import me.rerere.rikkahub.data.model.MediaCreationAsset
 import me.rerere.rikkahub.data.model.MediaCreationAssetType
 import me.rerere.rikkahub.data.model.MediaCreationDraft
@@ -147,6 +148,7 @@ internal fun MediaCreationComposer(
     uploadConfigured: Boolean,
     onOpenMediaSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onEditPlatformAsset: (MediaCreationAsset) -> Unit = {},
 ) {
     var showModels by remember { mutableStateOf(false) }
     var showParams by remember { mutableStateOf(false) }
@@ -173,7 +175,15 @@ internal fun MediaCreationComposer(
 
     val capabilities = selection?.capabilities
     val hasContent = vm.promptState.text.isNotEmpty() || draft.assets.isNotEmpty()
-    val canSubmit = capabilities != null &&
+    val isPlatform = selection?.provider is MediaGenerationProviderSetting.OpenAIPlatform
+    val platformError = if (isPlatform) {
+        platformParameterError(
+            selection.model.modelId, draft.assets.isNotEmpty(), draft.params,
+            mask = draft.params.imageEdit?.maskPath != null,
+            markup = draft.params.imageEdit?.markupPath != null,
+        )
+    } else null
+    val canSubmit = capabilities != null && platformError == null &&
         draft.copy(prompt = vm.promptState.text.toString()).canSubmit(capabilities)
 
     // 分槽位（首帧、尾帧）的模型一直显示素材行，槽位本身就是提示；只有参考素材的模型没放素材时把这一行
@@ -215,7 +225,11 @@ internal fun MediaCreationComposer(
                         onPick = { pickingRole = it },
                         onRemove = vm::removeAsset,
                         onSetRole = vm::setAssetRole,
-                        onDraw = { sketching = SketchRequest(role = it.role, asset = it) },
+                        onDraw = { asset ->
+                            if (isPlatform) onEditPlatformAsset(asset)
+                            else sketching = SketchRequest(role = asset.role, asset = asset)
+                        },
+                        platformEdit = isPlatform,
                         modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp),
                     )
                 }
@@ -239,6 +253,15 @@ internal fun MediaCreationComposer(
                             .clickable(onClick = onOpenMediaSettings),
                     )
                 }
+            }
+
+            if (platformError != null) {
+                Text(
+                    text = platformError,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 8.dp).clickable { showParams = true },
+                )
             }
 
             TextField(
@@ -279,9 +302,12 @@ internal fun MediaCreationComposer(
                 ) {
                     ModelButton(model = selection?.model, onClick = { showModels = true })
                     if (selection != null && capabilities != null && capabilities.parameters.isNotEmpty()) {
-                        val summary = draft.params
-                            .withRequired(capabilities, selection.provider.presets(selection.model.kind).defaults)
-                            .summary(selection.model.kind)
+                        val summary = if (isPlatform) {
+                            draft.params.platformSummary()
+                        } else {
+                            draft.params.withRequired(capabilities, selection.provider.presets(selection.model.kind).defaults)
+                                .summary(selection.model.kind)
+                        }
                         ComposerChip(
                             icon = HugeIcons.SlidersHorizontal,
                             text = summary.take(3).joinToString(" · ")
@@ -321,12 +347,24 @@ internal fun MediaCreationComposer(
     }
 
     if (showParams && selection != null) {
-        ParamsSheet(
-            selection = selection,
-            params = draft.params,
-            onParamsChange = vm::updateParams,
-            onDismiss = { showParams = false },
-        )
+        if (isPlatform) {
+            PlatformImageParamsSheet(
+                modelId = selection.model.modelId,
+                editing = draft.assets.isNotEmpty(),
+                mask = draft.params.imageEdit?.maskPath != null,
+                markup = draft.params.imageEdit?.markupPath != null,
+                params = draft.params,
+                onParamsChange = vm::updateParams,
+                onDismiss = { showParams = false },
+            )
+        } else {
+            ParamsSheet(
+                selection = selection,
+                params = draft.params,
+                onParamsChange = vm::updateParams,
+                onDismiss = { showParams = false },
+            )
+        }
     }
 
     val role = pickingRole
@@ -336,7 +374,10 @@ internal fun MediaCreationComposer(
         AssetPickerSheet(
             role = role,
             acceptsVideo = acceptsVideo,
-            recentOutputs = recentOutputs.filter { acceptsVideo || !it.output.isVideo },
+            recentOutputs = recentOutputs.filter {
+                if (isPlatform) it.output.supportsPlatformEditing
+                else acceptsVideo || !it.output.isVideo
+            },
             resolve = vm::resolve,
             onPickImages = {
                 pickingRole = null
@@ -517,6 +558,7 @@ private fun AssetRow(
     onRemove: (MediaCreationAsset) -> Unit,
     onSetRole: (MediaCreationAsset, ImageRole) -> Unit,
     onDraw: (MediaCreationAsset) -> Unit,
+    platformEdit: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val frameRoles = capabilities.frameRoles
@@ -528,13 +570,18 @@ private fun AssetRow(
         AssetTile(
             file = resolve(asset.path),
             isVideo = isVideo,
-            label = if (isVideo) stringResource(R.string.video) else asset.role.label.takeIf { showLabels },
+            label = when {
+                isVideo -> stringResource(R.string.video)
+                platformEdit -> if (asset == assets.firstOrNull()) "底图" else "参考图"
+                else -> asset.role.label.takeIf { showLabels }
+            },
             // 图片可以在各个槽位之间挪动
             roleOptions = if (isVideo) emptyList() else capabilities.imageRoles.filter { it != asset.role },
             onSetRole = { onSetRole(asset, it) },
             // 只有图片能垫在画板下面
             onDraw = if (isVideo) null else ({ onDraw(asset) }),
             onRemove = { onRemove(asset) },
+            openEditorOnClick = platformEdit,
         )
     }
 
@@ -567,6 +614,7 @@ private fun AssetTile(
     onSetRole: (ImageRole) -> Unit,
     onDraw: (() -> Unit)?,
     onRemove: () -> Unit,
+    openEditorOnClick: Boolean,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     Box(modifier = Modifier.size(AssetTileSize)) {
@@ -577,7 +625,9 @@ private fun AssetTile(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(AssetTileShape)
-                .clickable(enabled = roleOptions.isNotEmpty() || onDraw != null) { showMenu = true },
+                .clickable(enabled = roleOptions.isNotEmpty() || onDraw != null) {
+                    if (openEditorOnClick) onDraw?.invoke() else showMenu = true
+                },
         )
         if (label != null) {
             Text(
@@ -990,7 +1040,7 @@ private fun ParamsSheet(
 // [default] 不为空表示这一项必填：没有「默认」，还没设置时选中的是 [default]
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun <T> PresetChips(
+internal fun <T> PresetChips(
     value: T?,
     presets: List<T>,
     default: T?,
@@ -1115,7 +1165,7 @@ private fun TextParam(
 // 只接受正整数（[allowZero] 时含 0）；清空输入框等于回到默认。
 // [special] 是额外接受的一个负数取值和它在快捷选项上的名字，输入框里打出负号就算选中它
 @Composable
-private fun NumberParam(
+internal fun NumberParam(
     label: String,
     value: Long?,
     presets: List<Long>,
@@ -1200,7 +1250,7 @@ private fun ToggleParam(
 }
 
 @Composable
-private fun ComposerSheet(
+internal fun ComposerSheet(
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {

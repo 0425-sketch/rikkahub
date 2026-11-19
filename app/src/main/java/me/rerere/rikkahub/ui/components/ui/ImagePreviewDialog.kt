@@ -38,6 +38,7 @@ fun ImagePreviewDialog(
     initialPage: Int = 0,
     // 底部操作栏里额外的按钮，参数是当前页
     actions: @Composable RowScope.(page: Int) -> Unit = {},
+    onSave: (suspend (page: Int) -> Unit)? = null,
     onDismissRequest: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -76,8 +77,8 @@ fun ImagePreviewDialog(
                             // 保存完成前一直显示，结束后收起，避免和结果提示叠在一起
                             val saving = toaster.showProgress(resources.getString(R.string.image_preview_saving))
                             runCatching {
-                                val imgUrl = images[state.currentPage]
-                                filesManager.saveMessageImage(context, imgUrl)
+                                val page = state.currentPage
+                                if (onSave != null) onSave(page) else filesManager.saveMessageImage(context, images[page])
                             }.onSuccess {
                                 saving.dismiss()
                                 toaster.show(message = resources.getString(R.string.image_preview_saved), type = ToastType.Success)

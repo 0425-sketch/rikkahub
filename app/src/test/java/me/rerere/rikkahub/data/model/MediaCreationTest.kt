@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.model
 
+import kotlinx.serialization.json.Json
 import me.rerere.mediagen.model.ImageRole
 import me.rerere.mediagen.model.MediaGenerationInput
 import me.rerere.mediagen.model.MediaKind
@@ -21,6 +22,21 @@ class MediaCreationTest {
         MediaCreationAsset(path = path, type = MediaCreationAssetType.IMAGE, role = role)
 
     private fun video(path: String) = MediaCreationAsset(path = path, type = MediaCreationAssetType.VIDEO)
+
+    @Test
+    fun `existing settings drafts and media params keep their persisted meaning`() {
+        val backupJson = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+        val old = """{"type":"openai","name":"My relay","baseUrl":"https://example.org/v1","apiKey":"fixture","models":[]}"""
+        val restored = backupJson.decodeFromString<MediaGenerationProviderSetting>(old)
+        assertTrue(restored is MediaGenerationProviderSetting.OpenAI)
+        assertEquals("https://example.org/v1", restored.baseUrl)
+        val draft = backupJson.decodeFromString<MediaCreationDraft>(
+            """{"prompt":"legacy","assets":[{"path":"draft/input.png"}],"params":{"resolution":"1024x1024","count":2}}"""
+        )
+        assertEquals("draft/input.png", draft.assets.single().path)
+        assertEquals(MediaCreationParams(count = 2, resolution = "1024x1024"), draft.params)
+        assertFalse(backupJson.encodeToString(draft).contains("platformOptions"))
+    }
 
     @Test
     fun `params keep only what the adapter supports`() {

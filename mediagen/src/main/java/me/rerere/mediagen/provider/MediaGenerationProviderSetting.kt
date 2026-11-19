@@ -75,6 +75,30 @@ sealed class MediaGenerationProviderSetting {
         }
     }
 
+    @Serializable
+    @SerialName("openai_platform_images")
+    data class OpenAIPlatform(
+        override val id: Uuid = Uuid.random(),
+        override val name: String = "OpenAI Platform 图像",
+        override val apiKey: String = "",
+        override val models: List<MediaGenerationModel> = listOf(
+            MediaGenerationModel(modelId = "gpt-image-2.6-sunburst", kind = MediaKind.IMAGE),
+            MediaGenerationModel(modelId = "gpt-image-2.6-flare", kind = MediaKind.IMAGE),
+        ),
+        val historyModelId: Uuid? = null,
+    ) : MediaGenerationProviderSetting() {
+        override val baseUrl: String get() = "https://api.openai.com/v1"
+        override val supportedKinds: Set<MediaKind> get() = setOf(MediaKind.IMAGE)
+
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+            apiKey: String,
+            baseUrl: String,
+            models: List<MediaGenerationModel>,
+        ) = copy(id = id, name = name, apiKey = apiKey, models = models)
+    }
+
     /**
      * 百炼按业务空间分配域名：[baseUrl] 里的 `{WorkspaceId}` 会被替换成 [workspaceId]。换地域时改 [baseUrl] 里的地域段；
      * 不含占位符的地址（如旧的 `https://dashscope.aliyuncs.com/api/v1`）原样使用，此时不需要 [workspaceId]。
@@ -221,6 +245,7 @@ sealed class MediaGenerationProviderSetting {
         val Types by lazy {
             listOf(
                 OpenAI::class,
+                OpenAIPlatform::class,
                 Aliyun::class,
                 Volcengine::class,
                 MiniMax::class,

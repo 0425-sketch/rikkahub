@@ -7,11 +7,13 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import me.rerere.mediagen.model.MediaGenerationModel
+import me.rerere.mediagen.model.MediaGenerationOutput
 import me.rerere.mediagen.model.MediaGenerationRequest
 import me.rerere.mediagen.model.MediaGenerationTask
 import me.rerere.mediagen.provider.providers.aliyun.AliyunMediaGenerationProvider
 import me.rerere.mediagen.provider.providers.minimax.MiniMaxMediaGenerationProvider
 import me.rerere.mediagen.provider.providers.openai.OpenAIMediaGenerationProvider
+import me.rerere.mediagen.provider.providers.openaiplatform.PlatformImagesProvider
 import me.rerere.mediagen.provider.providers.openrouter.OpenRouterMediaGenerationProvider
 import me.rerere.mediagen.provider.providers.volcengine.VolcengineMediaGenerationProvider
 import okhttp3.OkHttpClient
@@ -22,6 +24,7 @@ class MediaGenerationManager(
     client: OkHttpClient = OkHttpClient(),
 ) {
     private val openAI = OpenAIMediaGenerationProvider(client)
+    private val platformImages = PlatformImagesProvider(client)
     private val aliyun = AliyunMediaGenerationProvider(client)
     private val volcengine = VolcengineMediaGenerationProvider(client)
     private val miniMax = MiniMaxMediaGenerationProvider(client)
@@ -31,8 +34,12 @@ class MediaGenerationManager(
         setting: MediaGenerationProviderSetting,
         model: MediaGenerationModel,
         request: MediaGenerationRequest,
+        onPreview: suspend (MediaGenerationOutput) -> Unit = {},
     ): Result<MediaGenerationTask> = withContext(Dispatchers.Default) {
-        unsupportedKind(setting, model) ?: provider(setting).createUnsafe(setting, model, request)
+        unsupportedKind(setting, model) ?: when (setting) {
+            is MediaGenerationProviderSetting.OpenAIPlatform -> platformImages.create(setting, model, request, onPreview)
+            else -> provider(setting).createUnsafe(setting, model, request)
+        }
     }
 
     suspend fun query(
@@ -82,6 +89,7 @@ class MediaGenerationManager(
     private fun provider(setting: MediaGenerationProviderSetting): MediaGenerationProvider<*> =
         when (setting) {
             is MediaGenerationProviderSetting.OpenAI -> openAI
+            is MediaGenerationProviderSetting.OpenAIPlatform -> platformImages
             is MediaGenerationProviderSetting.Aliyun -> aliyun
             is MediaGenerationProviderSetting.Volcengine -> volcengine
             is MediaGenerationProviderSetting.MiniMax -> miniMax

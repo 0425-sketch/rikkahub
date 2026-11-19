@@ -16,12 +16,13 @@ setting 是厂商级的，只保存凭据（`apiKey` / `baseUrl`）和该厂商�
 | 供应商               | 图像                      | 视频             |
 |-------------------|-------------------------|----------------|
 | OpenAI（及兼容协议的中转） | 生成 + 编辑，同步              | 未实现            |
+| OpenAI Platform 图像 | GPT Image 生成与编辑，可选流式预览 | 未实现 |
 | 阿里云百炼             | 万相 / 千问，生成 + 编辑，同步      | 万相，异步任务        |
 | 火山方舟              | Seedream，生成 + 参考图生图，同步 | Seedance，异步任务 |
 | MiniMax           | 未实现                     | H3，异步任务        |
 | OpenRouter        | 生成 + 参考图生图，同步           | 异步任务           |
 
-适配器按厂商分包，放在 `provider/providers/{openai,aliyun,volcengine,minimax,openrouter}` 下，公用的 HTTP 和图片工具留在
+适配器按厂商分包，放在 `provider/providers/{openai,openaiplatform,aliyun,volcengine,minimax,openrouter}` 下，公用的 HTTP 和图片工具留在
 `provider/providers`。两种 kind 都实现的厂商，provider 只做路由，图像和视频协议各自放在 `{Vendor}ImageGeneration` /
 `{Vendor}VideoGeneration` 里。
 给已有厂商补另一种 kind 时，加上对应的类和路由分支并扩充 `supportedKinds`，setting 和公共接口不用改。
@@ -104,6 +105,19 @@ setting 是厂商级的，只保存凭据（`apiKey` / `baseUrl`）和该厂商�
 - `resolution` 映射为 `size`，为空或 `auto` 时不下发；Grok（`x.ai` 域名或模型名含 `grok`）不接受 `size`，同样不下发；
 - `quality`、`background`、`output_format` 等走 `extraParameters`；
 - 响应里的 `b64_json` 解码后放进 `output.data`；只返回 `url` 时（dall-e 系列和部分中转）原样放进 `output.url`。
+
+### OpenAI Platform 图像
+
+在媒体生成设置中添加此提供商，填写 Platform API Key。预置 GPT Image 2.6 Sunburst 和 Flare，均可在模型列表中管理。
+专属参数和组合校验位于 `openaiplatform/PlatformImageOptions.kt`。没有设置的字段交给 API 决定。
+流式中间图经 `MediaGenerationManager.create` 的 `onPreview` 回调传递，`outputs` 只包含最终原件。
+
+点具体结果的「编辑这张图」可输入改动、涂选或标注。每个本地版本用记录 ID 和该次生成的结果序号标识，
+编辑记录保存底图版本、实际上传的素材和独立图层。GIF 支持静态参考图，SVG 使用生成端点并保留原始矢量文件。
+
+需要通过描述找回旧版时，可在提供商中选一个已通过 SIWC 登录的视觉聊天模型。
+该模型使用 ChatGPT 套餐，接收相关版本记录和缩略图。应用校验版本后，把对应原图提交给 Platform Images API，使用 Platform 额度。
+手动选好参考图即可直接编辑。[图像指南](https://developers.openai.com/api/docs/guides/image-generation) · [SIWC 通道限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
 
 ### 火山 Seedream
 

@@ -17,9 +17,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import me.rerere.common.http.await
 import me.rerere.mediagen.model.MediaGenerationModel
 import me.rerere.mediagen.model.MediaGenerationOutput
@@ -37,6 +42,7 @@ import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.MediaCreationFiles
 import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.model.MediaCreationAsset
+import me.rerere.rikkahub.data.model.PlatformImageResultInfo
 import me.rerere.rikkahub.data.model.MediaCreationOutput
 import me.rerere.rikkahub.data.model.MediaCreationParams
 import me.rerere.rikkahub.data.model.MediaCreationRecord
@@ -93,6 +99,8 @@ class MediaCreationService(
     private val okHttpClient: OkHttpClient,
 ) {
     private val jobs = ConcurrentHashMap<Uuid, Job>()
+    private val partialImages = MutableStateFlow<Map<Uuid, ByteArray>>(emptyMap())
+    val previews = partialImages.asStateFlow()
 
     /**
      * 新建一条记录并开始生成。提交过程放在应用级作用域里，调用方中途被取消也不会留下半条记录。
@@ -102,6 +110,36 @@ class MediaCreationService(
             ?: error(context.getString(R.string.media_creation_error_kind_unsupported, submission.provider.name))
         val recordId = Uuid.random()
         val assets = submission.assets.supportedBy(capabilities)
+        val params = submission.params.supportedBy(capabilities)
+        if (capabilities.platformImages) {
+            params.platformOptions.validate(
+                submission.model.modelId, assets.isNotEmpty(), params.count, params.resolution,
+                params.imageEdit?.maskPath != null, params.imageEdit?.markupPath != null,
+            )
+        }
+        val inputs = copyInputs(submission.sessionId, recordId, assets)
+        val dir = repository.recordDir(submission.sessionId, recordId)
+        val edit = withContext(Dispatchers.IO) {
+            try {
+                params.imageEdit?.let { edit ->
+                    fun snapshot(path: String, name: String): String {
+                        val layer = repository.resolve(path)
+                        require(layer.canonicalFile.startsWith(context.filesDir.canonicalFile)) { "无效的图层路径" }
+                        return repository.relativePath(layer.copyTo(File(dir, name)))
+                    }
+                    edit.copy(
+                        originalBasePath = edit.originalBasePath?.let { path ->
+                            snapshot(path, "original_base.${repository.resolve(path).extension}")
+                        },
+                        maskPath = edit.maskPath?.let { snapshot(it, "mask.png") },
+                        markupPath = edit.markupPath?.let { snapshot(it, "markup.png") },
+                    )
+                }
+            } catch (e: Throwable) {
+                dir.deleteRecursively()
+                throw e
+            }
+        }
         val record = MediaCreationRecord(
             id = recordId,
             sessionId = submission.sessionId,
@@ -111,8 +149,8 @@ class MediaCreationService(
             modelId = submission.model.modelId,
             kind = submission.model.kind,
             prompt = submission.prompt.trim(),
-            params = submission.params.supportedBy(capabilities),
-            inputs = copyInputs(submission.sessionId, recordId, assets),
+            params = params.copy(imageEdit = edit),
+            inputs = inputs,
         )
         // 先登记任务再写入记录：恢复逻辑把「进行中但没有任务」的记录当作被中断，不能让它看到这个空档
         val job = register(record.id, record.sessionId)
@@ -229,6 +267,7 @@ class MediaCreationService(
             try {
                 run(recordId)
             } finally {
+                partialImages.update { it - recordId }
                 jobs.remove(recordId, coroutineContext.job)
                 if (foreground) MediaCreationForegroundService.release(context, recordId)
             }
@@ -297,7 +336,14 @@ class MediaCreationService(
                     error = context.getString(R.string.media_creation_error_no_output),
                 )
             } else {
-                it.copy(status = MediaCreationStatus.SUCCEEDED, outputs = outputs, error = null)
+                val params = if (setting is MediaGenerationProviderSetting.OpenAIPlatform) {
+                    fun field(name: String) = (task.metadata[name] as? JsonPrimitive)?.contentOrNull
+                    it.params.copy(imageResult = PlatformImageResultInfo(
+                        model = task.model, quality = field("quality"), size = field("size"),
+                        background = field("background"), format = field("output_format"), complexity = field("complexity"),
+                    ))
+                } else it.params
+                it.copy(status = MediaCreationStatus.SUCCEEDED, outputs = outputs, params = params, error = null)
             }
         }
     }
@@ -317,8 +363,12 @@ class MediaCreationService(
             record.inputs.map { repository.resolve(it.path).absolutePath }
         }
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
-        val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities)
-        return manager.create(setting, model, request).getOrElse {
+        val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities) {
+            repository.resolve(it).absolutePath
+        }
+        return manager.create(setting, model, request) { preview ->
+            preview.data?.let { bytes -> partialImages.update { it + (record.id to bytes) } }
+        }.getOrElse {
             currentCoroutineContext().ensureActive()
             throw it
         }

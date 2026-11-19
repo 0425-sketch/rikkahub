@@ -317,6 +317,7 @@ private fun AddMediaProviderButton(onAdd: (MediaGenerationProviderSetting) -> Un
     val factories = remember {
         listOf<() -> MediaGenerationProviderSetting>(
             { MediaGenerationProviderSetting.OpenAI() },
+            { MediaGenerationProviderSetting.OpenAIPlatform() },
             { MediaGenerationProviderSetting.Aliyun() },
             { MediaGenerationProviderSetting.Volcengine() },
             { MediaGenerationProviderSetting.MiniMax() },

@@ -34,6 +34,7 @@ import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 val MediaGenerationProviderSetting.typeName: String
     @Composable get() = when (this) {
         is MediaGenerationProviderSetting.OpenAI -> "OpenAI"
+        is MediaGenerationProviderSetting.OpenAIPlatform -> "OpenAI Platform 图像"
         is MediaGenerationProviderSetting.Aliyun -> stringResource(R.string.media_provider_type_aliyun)
         is MediaGenerationProviderSetting.Volcengine -> stringResource(R.string.media_provider_type_volcengine)
         is MediaGenerationProviderSetting.MiniMax -> "MiniMax"
@@ -87,22 +88,26 @@ fun MediaGenerationProviderBasicConfigure(
                 )
             }
 
-            formItem(headlineContent = { Text("API Key") }) {
-                OutlinedTextField(
-                    value = setting.apiKey,
-                    onValueChange = { onValueChange(setting.copyProvider(apiKey = it.trim())) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            }
+            if (setting is MediaGenerationProviderSetting.OpenAIPlatform) {
+                platformImageAccountItems(setting, onValueChange)
+            } else {
+                formItem(headlineContent = { Text("API Key") }) {
+                    OutlinedTextField(
+                        value = setting.apiKey,
+                        onValueChange = { onValueChange(setting.copyProvider(apiKey = it.trim())) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
 
-            formItem(headlineContent = { Text("Base URL") }) {
-                OutlinedTextField(
-                    value = setting.baseUrl,
-                    onValueChange = { onValueChange(setting.copyProvider(baseUrl = it.trim())) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                formItem(headlineContent = { Text("Base URL") }) {
+                    OutlinedTextField(
+                        value = setting.baseUrl,
+                        onValueChange = { onValueChange(setting.copyProvider(baseUrl = it.trim())) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
             }
 
             if (setting is MediaGenerationProviderSetting.Aliyun) {

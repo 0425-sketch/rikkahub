@@ -50,11 +50,17 @@ data class MediaGenerationCapabilities(
     val requiresPrompt: Boolean = false,
     /** 素材必须是公网地址；为 false 时图片输入可以直接传本地文件路径。 */
     val requiresRemoteInputs: Boolean = false,
+    val platformImages: Boolean = false,
 )
 
 /** 适配器没有实现 [kind] 时返回 null。 */
 fun MediaGenerationProviderSetting.capabilities(kind: MediaKind): MediaGenerationCapabilities? =
     when (this) {
+        is MediaGenerationProviderSetting.OpenAIPlatform -> when (kind) {
+            MediaKind.IMAGE -> OPENAI_PLATFORM_IMAGE
+            MediaKind.VIDEO -> null
+        }
+
         is MediaGenerationProviderSetting.OpenAI -> when (kind) {
             MediaKind.IMAGE -> OPENAI_IMAGE
             MediaKind.VIDEO -> null
@@ -90,6 +96,8 @@ private val OPENAI_IMAGE = MediaGenerationCapabilities(
     imageRoles = REFERENCE_ONLY,
     requiresPrompt = true,
 )
+
+private val OPENAI_PLATFORM_IMAGE = OPENAI_IMAGE.copy(platformImages = true)
 
 private val ALIYUN_IMAGE = MediaGenerationCapabilities(
     parameters = setOf(

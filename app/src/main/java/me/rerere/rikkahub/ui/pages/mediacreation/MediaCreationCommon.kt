@@ -1,11 +1,13 @@
 package me.rerere.rikkahub.ui.pages.mediacreation
 
 import android.Manifest
+import android.content.ClipData
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -143,6 +145,8 @@ internal data class MediaCreationPresets(
 }
 
 internal fun MediaGenerationProviderSetting.presets(kind: MediaKind): MediaCreationPresets = when (this) {
+    is MediaGenerationProviderSetting.OpenAIPlatform -> MediaCreationPresets()
+
     is MediaGenerationProviderSetting.OpenAI -> MediaCreationPresets(
         resolutions = listOf("1024x1024", "1536x1024", "1024x1536"),
         counts = IMAGE_COUNTS,
@@ -218,7 +222,7 @@ internal fun MediaThumbnail(
             AsyncImage(
                 model = poster ?: file,
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = if (file.extension.equals("svg", ignoreCase = true)) ContentScale.Fit else ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -249,24 +253,30 @@ internal fun MediaThumbnail(
 }
 
 /**
- * 把生成的图片或视频存进系统相册。
+ * 图片和视频存进系统相册，SVG 矢量原件存进下载目录。
  */
-internal suspend fun saveMediaToGallery(context: Context, file: File, mimeType: String) = withContext(Dispatchers.IO) {
+internal suspend fun saveMediaToGallery(context: Context, file: File, mimeType: String): Uri = withContext(Dispatchers.IO) {
     check(file.isFile) { context.getString(R.string.media_creation_page_file_missing) }
     val isVideo = mimeType.startsWith("video/")
     val name = "RikkaHub_${System.currentTimeMillis()}.${file.extension}"
-    val directory = if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
+    val isSvg = mimeType == "image/svg+xml"
+    val directory = when {
+        isVideo -> Environment.DIRECTORY_MOVIES
+        isSvg -> Environment.DIRECTORY_DOWNLOADS
+        else -> Environment.DIRECTORY_PICTURES
+    }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
             put(MediaStore.MediaColumns.RELATIVE_PATH, directory)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val collection = if (isVideo) {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        } else {
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        val collection = when {
+            isVideo -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            isSvg -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            else -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
         }
         val uri = resolver.insert(collection, values)
             ?: error(context.getString(R.string.media_creation_page_gallery_write_failed))
@@ -274,6 +284,11 @@ internal suspend fun saveMediaToGallery(context: Context, file: File, mimeType: 
             val output = resolver.openOutputStream(uri)
                 ?: error(context.getString(R.string.media_creation_page_gallery_write_failed))
             output.use { target -> file.inputStream().use { it.copyTo(target) } }
+            val published = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+            check(resolver.update(uri, published, null, null) == 1) {
+                context.getString(R.string.media_creation_page_gallery_write_failed)
+            }
+            uri
         } catch (e: Exception) {
             resolver.delete(uri, null, null)
             throw e
@@ -282,27 +297,40 @@ internal suspend fun saveMediaToGallery(context: Context, file: File, mimeType: 
         // Android 9 及以下直接写公共目录，需要存储权限
         val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
         if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED) {
-            context.getActivity()?.let { ActivityCompat.requestPermissions(it, arrayOf(permission), 1) }
+            withContext(Dispatchers.Main) {
+                context.getActivity()?.let { ActivityCompat.requestPermissions(it, arrayOf(permission), 1) }
+            }
             error(context.getString(R.string.media_creation_page_storage_permission_required))
         }
         // 批量保存时同一毫秒里会有好几个文件，重名的另取一个名字，不能互相覆盖（Android 10 起由 MediaStore 处理）
-        val dir = Environment.getExternalStoragePublicDirectory(directory)
+        val dir = Environment.getExternalStoragePublicDirectory(directory).apply { mkdirs() }
         val target = generateSequence(0) { it + 1 }
             .map { if (it == 0) File(dir, name) else File(dir, "${name.substringBeforeLast('.')}_$it.${file.extension}") }
-            .first { !it.exists() }
-        file.copyTo(target)
+            .first { it.createNewFile() }
+        try {
+            target.outputStream().use { sink -> file.inputStream().use { it.copyTo(sink) } }
+        } catch (error: Exception) {
+            target.delete()
+            throw error
+        }
         MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf(mimeType), null)
+        Uri.fromFile(target)
     }
 }
 
 internal fun shareMedia(context: Context, file: File, mimeType: String) {
+    context.startActivity(Intent.createChooser(createShareMediaIntent(context, file, mimeType), null))
+}
+
+internal fun createShareMediaIntent(context: Context, file: File, mimeType: String): Intent {
+    check(file.isFile) { context.getString(R.string.media_creation_page_file_missing) }
     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-    val intent = Intent(Intent.ACTION_SEND).apply {
+    return Intent(Intent.ACTION_SEND).apply {
         type = mimeType
+        clipData = ClipData(file.name, arrayOf(mimeType), ClipData.Item(uri))
         putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, null))
 }
 
 @Composable

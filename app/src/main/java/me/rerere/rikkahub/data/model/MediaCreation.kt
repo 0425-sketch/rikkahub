@@ -1,12 +1,15 @@
 package me.rerere.rikkahub.data.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import me.rerere.mediagen.model.ImageRole
 import me.rerere.mediagen.model.MediaGenerationInput
 import me.rerere.mediagen.model.MediaGenerationRequest
 import me.rerere.mediagen.model.MediaKind
 import me.rerere.mediagen.provider.MediaGenerationCapabilities
 import me.rerere.mediagen.provider.MediaGenerationParameter
+import me.rerere.mediagen.provider.providers.openaiplatform.PlatformImageOptions
 import java.time.Instant
 import kotlin.uuid.Uuid
 
@@ -49,16 +52,19 @@ enum class MediaCreationAssetType {
 /**
  * 一份输入素材。[path] 相对于应用的 filesDir；[role] 只对图片有意义。
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class MediaCreationAsset(
     val path: String,
     val type: MediaCreationAssetType = MediaCreationAssetType.IMAGE,
     val role: ImageRole = ImageRole.REFERENCE,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val version: MediaImageVersionId? = null,
 )
 
 /**
  * 用户选择的公共参数，null 表示交给接口的默认值。
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class MediaCreationParams(
     val count: Int? = null,
@@ -69,6 +75,31 @@ data class MediaCreationParams(
     val watermark: Boolean? = null,
     val seed: Long? = null,
     val promptEnhancement: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val platformOptions: PlatformImageOptions = PlatformImageOptions(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val imageEdit: PlatformImageEditHistory? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val imageResult: PlatformImageResultInfo? = null,
+)
+
+/** Effective settings reported by Images API; the request, including any API defaults, remains replayable. */
+@Serializable
+data class PlatformImageResultInfo(
+    val model: String? = null,
+    val quality: String? = null,
+    val size: String? = null,
+    val background: String? = null,
+    val format: String? = null,
+    val complexity: String? = null,
+)
+
+/** Stored inside the record's existing params JSON. File paths are relative to filesDir. */
+@Serializable
+data class PlatformImageEditHistory(
+    val parent: MediaImageVersionId? = null,
+    val references: List<MediaImageVersionId> = emptyList(),
+    val maskPath: String? = null,
+    val markupPath: String? = null,
+    val originalBasePath: String? = null,
+    val originalInstruction: String? = null,
 )
 
 /**
@@ -136,7 +167,9 @@ data class MediaCreationRecord(
     val outputs: List<MediaCreationOutput> = emptyList(),
     val createAt: Instant = Instant.now(),
     val updateAt: Instant = Instant.now(),
-)
+) {
+    val parentVersion: MediaImageVersionId? get() = params.imageEdit?.parent
+}
 
 /**
  * 时间线上的一项：同一个位置上的若干个版本，界面只显示选中的那一个 [record]。
@@ -166,6 +199,8 @@ fun MediaCreationParams.supportedBy(capabilities: MediaGenerationCapabilities): 
         watermark = watermark.takeIfSupported(MediaGenerationParameter.WATERMARK),
         seed = seed.takeIfSupported(MediaGenerationParameter.SEED),
         promptEnhancement = promptEnhancement.takeIfSupported(MediaGenerationParameter.PROMPT_ENHANCEMENT),
+        platformOptions = if (capabilities.platformImages) platformOptions else PlatformImageOptions(),
+        imageEdit = imageEdit.takeIf { capabilities.platformImages },
     )
 }
 
@@ -178,7 +213,7 @@ fun MediaCreationParams.withRequired(
 ): MediaCreationParams {
     fun <T> T?.orRequired(parameter: MediaGenerationParameter, default: T?): T? =
         this ?: default.takeIf { parameter in capabilities.requiredParameters }
-    return MediaCreationParams(
+    return copy(
         count = count.orRequired(MediaGenerationParameter.COUNT, defaults.count),
         resolution = resolution?.takeIf(String::isNotBlank)
             .orRequired(MediaGenerationParameter.RESOLUTION, defaults.resolution),
@@ -242,6 +277,7 @@ fun buildMediaGenerationRequest(
     assets: List<MediaCreationAsset>,
     inputUrls: List<String>,
     capabilities: MediaGenerationCapabilities,
+    resolveLocalPath: (String) -> String = { it },
 ): MediaGenerationRequest {
     require(assets.size == inputUrls.size) { "assets and inputUrls must have the same size" }
     val supported = params.supportedBy(capabilities)
@@ -261,6 +297,9 @@ fun buildMediaGenerationRequest(
         watermark = supported.watermark,
         seed = supported.seed,
         promptEnhancement = supported.promptEnhancement,
+        platformOptions = supported.platformOptions.takeIf { capabilities.platformImages },
+        maskPath = supported.imageEdit?.maskPath?.let(resolveLocalPath),
+        markupPath = supported.imageEdit?.markupPath?.let(resolveLocalPath),
     )
 }
 

@@ -85,6 +85,7 @@ val viewModelModule = module {
             service = get(),
             remoteFileStore = get(),
             appScope = get(),
+            chatProviders = get(),
         )
     }
     viewModelOf(::PromptVM)

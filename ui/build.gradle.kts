@@ -31,4 +31,5 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.18")
 }

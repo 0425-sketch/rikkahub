@@ -79,6 +79,9 @@ import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.ImageToVideo
 import me.rerere.hugeicons.stroke.Settings03
+import me.rerere.mediagen.provider.MediaGenerationProviderSetting
+import me.rerere.rikkahub.data.model.MediaCreationRecord
+import me.rerere.rikkahub.data.model.MediaCreationOutput
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.model.MediaCreationNode
@@ -111,6 +114,9 @@ fun MediaCreationPage(id: String) {
     val selectedNodes by vm.selectedNodes.collectAsStateWithLifecycle()
     val nodes = vm.nodes.collectAsLazyPagingItems()
 
+    val platforms = settings.mediaGenerationProviders.filterIsInstance<MediaGenerationProviderSetting.OpenAIPlatform>()
+    var editTarget by remember(id) { mutableStateOf<PlatformEditTarget?>(null) }
+    var chooseHistoryBase by remember(id) { mutableStateOf<MediaCreationEvent.ChooseHistoryBase?>(null) }
     var showUploadDialog by remember { mutableStateOf(false) }
     var confirmDeleteSelected by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
@@ -123,6 +129,11 @@ fun MediaCreationPage(id: String) {
         vm.events.collect { event ->
             when (event) {
                 is MediaCreationEvent.Error -> toaster.show(event.message, type = ToastType.Error)
+                is MediaCreationEvent.ChooseHistoryBase -> {
+                    val only = event.bases.singleOrNull()
+                    if (only != null) editTarget = vm.platformEditor.target(event.selection, event.draft, only)
+                    else chooseHistoryBase = event
+                }
                 MediaCreationEvent.UploadNotConfigured -> showUploadDialog = true
                 MediaCreationEvent.SessionGone -> navController.popBackStack()
             }
@@ -204,6 +215,8 @@ fun MediaCreationPage(id: String) {
                     vm = vm,
                     nodes = nodes,
                     editingNodeId = draft.editingNodeId,
+                    platformIds = platforms.map { it.id }.toSet(),
+                    onEditImage = { record, output -> editTarget = vm.platformEditor.target(record, output) },
                     selectedNodes = selectedNodes,
                     hasModels = settings.mediaGenerationProviders.any { it.models.isNotEmpty() },
                     onOpenMediaSettings = { navController.navigate(Screen.SettingMedia) },
@@ -224,11 +237,37 @@ fun MediaCreationPage(id: String) {
                     selection = selection,
                     providers = settings.mediaGenerationProviders,
                     recentOutputs = recentOutputs,
+                    onEditPlatformAsset = { asset ->
+                        selection?.let { selected ->
+                            editTarget = vm.platformEditor.target(
+                                selected, draft.copy(prompt = vm.promptState.text.toString()), asset,
+                            )
+                        }
+                    },
                     uploadConfigured = uploadConfigured,
                     onOpenMediaSettings = { navController.navigate(Screen.SettingMedia) },
                 )
             }
         }
+    }
+
+    chooseHistoryBase?.let { choice ->
+        PlatformHistoryBaseDialog(
+            bases = choice.bases,
+            resolve = vm::resolve,
+            onSelect = { asset ->
+                chooseHistoryBase = null
+                editTarget = vm.platformEditor.target(choice.selection, choice.draft, asset)
+            },
+            onDismiss = { chooseHistoryBase = null },
+        )
+    }
+    editTarget?.let { target ->
+        PlatformImageEditDialog(
+            target = target, vm = vm,
+            historyAvailable = platforms.find { it.id == target.providerId }?.historyModelId != null,
+            onDismiss = { editTarget = null },
+        )
     }
 
     session?.takeIf { renaming }?.let { current ->
@@ -276,6 +315,8 @@ private fun MediaCreationTimeline(
     vm: MediaCreationVM,
     nodes: LazyPagingItems<MediaCreationNode>,
     editingNodeId: Uuid?,
+    platformIds: Set<Uuid>,
+    onEditImage: (MediaCreationRecord, MediaCreationOutput) -> Unit,
     selectedNodes: Set<Uuid>?,
     hasModels: Boolean,
     onOpenMediaSettings: () -> Unit,
@@ -321,6 +362,9 @@ private fun MediaCreationTimeline(
                     node = node,
                     editing = node.id == editingNodeId,
                     selected = selectedNodes?.let { node.id in it },
+                    onEditImage = if (node.record.providerId in platformIds) {
+                        { output -> onEditImage(node.record, output) }
+                    } else null,
                     vm = vm,
                 )
             } else {
@@ -509,7 +553,8 @@ private suspend fun saveSelected(context: Context, toaster: ToasterState, vm: Me
     }
     when {
         failures.isEmpty() -> toaster.show(
-            context.getString(R.string.media_creation_page_saved_files, outputs.size),
+            if (outputs.any { it.mimeType == "image/svg+xml" }) "已保存 ${outputs.size} 个文件，SVG 位于下载目录"
+            else context.getString(R.string.media_creation_page_saved_files, outputs.size),
             type = ToastType.Success,
         )
         else -> {

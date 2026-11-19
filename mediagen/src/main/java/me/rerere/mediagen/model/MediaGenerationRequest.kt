@@ -1,6 +1,7 @@
 package me.rerere.mediagen.model
 
 import kotlinx.serialization.Serializable
+import me.rerere.mediagen.provider.providers.openaiplatform.PlatformImageOptions
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -26,6 +27,9 @@ data class MediaGenerationRequest(
     val promptEnhancement: Boolean? = null,
     val callbackUrl: String? = null,
     val extraParameters: JsonObject = JsonObject(emptyMap()),
+    val platformOptions: PlatformImageOptions? = null,
+    val maskPath: String? = null,
+    val markupPath: String? = null,
 ) {
     init {
         require(!prompt.isNullOrBlank() || inputs.isNotEmpty()) {
