@@ -196,6 +196,8 @@ internal fun MediaCreationRecordItem(
     preview?.let { target ->
         if (target.isVideo) {
             VideoPlayerDialog(file = target.file, onDismissRequest = { preview = null })
+        } else if (onEditImage == null && record.params.imageResult == null && record.params.imageEdit == null) {
+            ImagePreviewDialog(images = listOf(target.file.absolutePath), onDismissRequest = { preview = null })
         } else {
             val context = LocalContext.current
             val toaster = LocalToaster.current
