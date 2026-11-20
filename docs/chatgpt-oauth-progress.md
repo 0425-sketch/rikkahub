@@ -6,7 +6,7 @@
 
 本地九模块 JVM 测试 1,287 项通过、0 项失败，1 项可选的 DeepSeek 私人归档测试跳过。54 项 Python 测试、Android 仪器测试源码编译和本地未签名 APK 构建通过。模拟 Images API 的真实 Compose 界面测试保持同一张卡片与同一份分页快照，检测到预览像素及其后的最终图像，确认保存计时结束。另测得有最终图而没有预览事件时实收数为 0。205 尚待真机确认。
 
-截至本次交接，线上可通过应用内更新取得的签名版仍为下节的 204。推送 205 后未出现发布任务；手工触发同一预发布工作流时 GitHub 返回 HTTP 422，提示仓库已禁用 Actions。当前连接查询仓库级 Actions 权限返回 HTTP 403。待恢复运行权限后，从默认分支触发 `chatgpt-test-apk.yml`，完成双签名恢复，使用 204 更新器验证公开 205 附件并验签后再记录为已发布。[仓库 Actions](https://github.com/0425-sketch/rikkahub/actions/workflows/chatgpt-test-apk.yml)
+205 的本地回归及未签名构建已完成，线上可更新的签名版仍以最新的个人预发布为准。2026-11-20 11:10 UTC，仓库所有者提供的页面显示已选择 Allow all actions and reusable workflows，发布工作流状态为 `active`。手工启动时 GitHub 仍返回 HTTP 422（`Actions has been disabled for this repository.`），请求编号 `9E36:160927:2BFAFED:8B8EF70:6B002A8F`。当前连接查询仓库级 Actions 权限返回 HTTP 403；实际拒绝原因待核实。本次使用仓库已有的构建请求文件再触发同一工作流。待签名发布后，用 204 更新器验证公开 205 附件并验签。[仓库 Actions](https://github.com/0425-sketch/rikkahub/actions/workflows/chatgpt-test-apk.yml)
 
 ## 最新已发布签名版 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
 
