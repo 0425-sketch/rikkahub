@@ -1,14 +1,16 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 默认分支开发基线 · 205 / 3.3.0-personal.5（2026-11-20 UTC，待签名发布）
+## 默认分支开发基线与最新签名版 · 205 / 3.3.0-personal.5（2026-11-20 UTC）
 
 205 修复了可见图片卡片在保存阶段持续计时的问题。活动记录和可原地重试的记录按实际版本 ID 观察数据库，完成后直接更新同一张卡片。单张流式收到中间图时显示预览；完成记录分别显示请求数和实收数。选多张时关闭流式。SVG 编写模型可选填用户已在自己项目实测的 `gpt-6.2-sol`。[205 修复源码](https://github.com/0425-sketch/rikkahub/commit/a43df06c7ff8455360cdaa1bb8ed498a06302b38)
 
-本地九模块 JVM 测试 1,287 项通过、0 项失败，1 项可选的 DeepSeek 私人归档测试跳过。54 项 Python 测试、Android 仪器测试源码编译和本地未签名 APK 构建通过。模拟 Images API 的真实 Compose 界面测试保持同一张卡片与同一份分页快照，检测到预览像素及其后的最终图像，确认保存计时结束。另测得有最终图而没有预览事件时实收数为 0。205 尚待真机确认。
+205 已发布到自用更新渠道。用 204 发布源码中的更新器匿名读取线上发布列表，已安装 204 时选中 205，已安装 205 时返回无更新。随后从更新器选中的公开地址下载 ARM64 APK，实测 61,373,169 字节，SHA-256 为 `e6e152759d39aa96542d20410aa5bdb28944d9bce519ebc9af444b0748c7efc3`。204 与 205 的包名均为 `me.rerere.rikkahub.personal`，签名证书 SHA-256 均为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`。两台独立构建机分别恢复了固定签名。APK 对应默认分支提交 `71ab1e5f660de55f5aca934099880c307965bcc2`。[自用预发布与附件](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-71ab1e5f660d-44726648705-1) · [公开构建证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-71ab1e5f660d-44726648705-1/build-provenance.json)
 
-205 的本地回归及未签名构建已完成，线上可更新的签名版仍以最新的个人预发布为准。2026-11-20 11:10 UTC，仓库所有者提供的页面显示已选择 Allow all actions and reusable workflows，发布工作流状态为 `active`。手工启动时 GitHub 仍返回 HTTP 422（`Actions has been disabled for this repository.`），请求编号 `9E36:160927:2BFAFED:8B8EF70:6B002A8F`。当前连接查询仓库级 Actions 权限返回 HTTP 403；实际拒绝原因待核实。本次使用仓库已有的构建请求文件再触发同一工作流。待签名发布后，用 204 更新器验证公开 205 附件并验签。[仓库 Actions](https://github.com/0425-sketch/rikkahub/actions/workflows/chatgpt-test-apk.yml)
+本地和本次 CI 的九模块 JVM 测试均为 1,287 项通过、0 项失败、1 项跳过。唯一跳过的是需要私人 DeepSeek 导出归档的可选测试。54 项 Python 测试与 Android 仪器测试源码编译通过。模拟 Images API 的 Compose 测试在同一张可见卡片验证了中间预览、最终图自动显示和保存计时结束，也覆盖了未收到预览的情况。实体手机上的覆盖安装及实际 API 的流式显示仍待体验。[CI 测试报告](https://github.com/0425-sketch/rikkahub/actions/runs/44726648705/artifacts/14623934151)
 
-## 最新已发布签名版 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
+本次发布时，默认分支收到了两次符合路径规则的推送，均未创建运行记录。11:10 UTC，当前连接手工启动时返回 HTTP 422（`Actions has been disabled for this repository.`，请求编号 `9E36:160927:2BFAFED:8B8EF70:6B002A8F`）。仓库所有者页面显示允许 Actions，工作流为 `active`。所有者在同一签名工作流页面对 `custom-3.2.0` 点击 **Run workflow**，第 12 次运行成功完成。接口拒绝的具体原因未查明。后续遇到同样情况，先按提交核对实际运行记录，区分接口报错和仓库设置。[第 12 次构建](https://github.com/0425-sketch/rikkahub/actions/runs/44726648705)
+
+## 已发布签名版 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
 
 204 已在自用仓库发布为预发布版，包含 203 的 OpenAI Platform 图像功能。202 和 203 均可从聊天侧栏直接发现并下载 204，由 Android 确认覆盖安装。后续开发从远端默认分支 `custom-3.2.0` 的最新提交开始。[预发布与附件](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-1ed6047a10e6-44632703073-1) · [APK 构建源码](https://github.com/0425-sketch/rikkahub/commit/1ed6047a10e64ded98b64ad9ef6f167eeed0cd26) · [构建记录](https://github.com/0425-sketch/rikkahub/actions/runs/44632703073)
 
