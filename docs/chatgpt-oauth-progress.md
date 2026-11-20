@@ -1,6 +1,14 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 最新交付与开发基线 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
+## 默认分支开发基线 · 205 / 3.3.0-personal.5（2026-11-20 UTC，待签名发布）
+
+205 修复了可见图片卡片在保存阶段持续计时的问题。活动记录和可原地重试的记录按实际版本 ID 观察数据库，完成后直接更新同一张卡片。单张流式收到中间图时显示预览；完成记录分别显示请求数和实收数。选多张时关闭流式。SVG 编写模型可选填用户已在自己项目实测的 `gpt-6.2-sol`。[205 修复源码](https://github.com/0425-sketch/rikkahub/commit/a43df06c7ff8455360cdaa1bb8ed498a06302b38)
+
+本地九模块 JVM 测试 1,287 项通过、0 项失败，1 项可选的 DeepSeek 私人归档测试跳过。54 项 Python 测试、Android 仪器测试源码编译和本地未签名 APK 构建通过。模拟 Images API 的真实 Compose 界面测试保持同一张卡片与同一份分页快照，检测到预览像素及其后的最终图像，确认保存计时结束。另测得有最终图而没有预览事件时实收数为 0。205 尚待真机确认。
+
+截至本次交接，线上可通过应用内更新取得的签名版仍为下节的 204。推送 205 后未出现发布任务；手工触发同一预发布工作流时 GitHub 返回 HTTP 422，提示仓库已禁用 Actions。当前连接查询仓库级 Actions 权限返回 HTTP 403。待恢复运行权限后，从默认分支触发 `chatgpt-test-apk.yml`，完成双签名恢复，使用 204 更新器验证公开 205 附件并验签后再记录为已发布。[仓库 Actions](https://github.com/0425-sketch/rikkahub/actions/workflows/chatgpt-test-apk.yml)
+
+## 最新已发布签名版 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
 
 204 已在自用仓库发布为预发布版，包含 203 的 OpenAI Platform 图像功能。202 和 203 均可从聊天侧栏直接发现并下载 204，由 Android 确认覆盖安装。后续开发从远端默认分支 `custom-3.2.0` 的最新提交开始。[预发布与附件](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-1ed6047a10e6-44632703073-1) · [APK 构建源码](https://github.com/0425-sketch/rikkahub/commit/1ed6047a10e64ded98b64ad9ef6f167eeed0cd26) · [构建记录](https://github.com/0425-sketch/rikkahub/actions/runs/44632703073)
 
