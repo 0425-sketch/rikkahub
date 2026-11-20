@@ -229,8 +229,8 @@ androidComponents {
         // A distinct identity keeps the previously installed app and all of its data intact.
         // Durable signing and two clean restore builds are required before publication.
         variant.applicationId.set("me.rerere.rikkahub.personal")
-        val personalVersionCode = 204
-        val personalVersionName = "3.3.0-personal.4"
+        val personalVersionCode = 205
+        val personalVersionName = "3.3.0-personal.5"
         variant.outputs.forEach { output ->
             output.versionCode.set(personalVersionCode)
             output.versionName.set(personalVersionName)
@@ -452,6 +452,9 @@ dependencies {
 
     // tests
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.ui.test.junit4)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.androidx.espresso.core)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation("org.robolectric:robolectric:4.18")
     androidTestImplementation(libs.androidx.junit)

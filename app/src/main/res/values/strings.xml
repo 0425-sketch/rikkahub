@@ -1406,6 +1406,7 @@
   <string name="media_creation_status_queued">Queued</string>
   <string name="media_creation_status_running">Generating</string>
   <string name="media_creation_status_downloading">Downloading results</string>
+  <string name="media_creation_platform_status_saving">Saving images</string>
   <string name="media_creation_status_succeeded">Completed</string>
   <string name="media_creation_status_failed">Generation failed</string>
   <string name="media_creation_status_cancelled">Cancelled</string>

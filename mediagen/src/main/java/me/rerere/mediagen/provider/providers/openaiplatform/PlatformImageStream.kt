@@ -4,6 +4,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import me.rerere.common.http.sse.newEventSource
@@ -31,7 +32,7 @@ internal suspend fun OkHttpClient.readPlatformImageStream(
     callbackFlow {
         val source = newEventSource(request, object : EventSourceListener() {
             override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
-                if (data != "[DONE]") trySendBlocking(type to data)
+                if (data == "[DONE]") close() else trySendBlocking(type to data)
             }
 
             override fun onClosed(eventSource: EventSource) { close() }
@@ -50,7 +51,7 @@ internal suspend fun OkHttpClient.readPlatformImageStream(
             }
         })
         awaitClose { source.cancel() }
-    }.buffer(0).collect { (eventType, data) ->
+    }.buffer(0).firstOrNull { (eventType, data) ->
         val image = mediaGenerationJson.parseToJsonElement(data).jsonObject
         val type = image.string("type") ?: eventType
         when (type) {
@@ -65,6 +66,8 @@ internal suspend fun OkHttpClient.readPlatformImageStream(
                     error.string("message") ?: "Images API 流式生成失败")
             }
         }
+        // completed carries the final bytes. Some transports keep the connection open afterwards.
+        outputs.size == count
     }
     check(outputs.size == count) { "Images API 流在返回全部最终图像前结束（${outputs.size}/$count）" }
     return PlatformImageResult(outputs, metadata)

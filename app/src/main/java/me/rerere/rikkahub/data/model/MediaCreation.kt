@@ -80,7 +80,8 @@ data class MediaCreationParams(
     @EncodeDefault(EncodeDefault.Mode.NEVER) val imageResult: PlatformImageResultInfo? = null,
 )
 
-/** Effective settings reported by Images API; the request, including any API defaults, remains replayable. */
+/** Effective settings and preview receipt for a completed Images API request. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class PlatformImageResultInfo(
     val model: String? = null,
@@ -89,6 +90,8 @@ data class PlatformImageResultInfo(
     val background: String? = null,
     val format: String? = null,
     val complexity: String? = null,
+    /** Partial-image events received by this client. Older records did not measure this. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val receivedPartialImages: Int? = null,
 )
 
 /** Stored inside the record's existing params JSON. File paths are relative to filesDir. */

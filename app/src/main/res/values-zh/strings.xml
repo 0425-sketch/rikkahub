@@ -1407,6 +1407,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="media_creation_status_queued">排队中</string>
   <string name="media_creation_status_running">生成中</string>
   <string name="media_creation_status_downloading">下载结果中</string>
+  <string name="media_creation_platform_status_saving">正在保存图片</string>
   <string name="media_creation_status_succeeded">已完成</string>
   <string name="media_creation_status_failed">生成失败</string>
   <string name="media_creation_status_cancelled">已取消</string>

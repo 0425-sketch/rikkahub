@@ -25,6 +25,8 @@ import me.rerere.rikkahub.data.model.MediaCreationParams
 import me.rerere.rikkahub.ui.components.ai.PickerHeader
 import me.rerere.ui.components.FormItem
 
+private const val SVG_AUTHOR_EXAMPLE = "gpt-6.2-sol"
+
 internal fun platformParameterError(
     modelId: String,
     editing: Boolean,
@@ -83,6 +85,14 @@ internal fun MediaCreationParams.selectPlatformCount(count: Int?): MediaCreation
         platformOptions
     }
     return copy(count = count, platformOptions = options)
+}
+
+internal fun PlatformImageOptions.selectSvgAuthor(input: String): PlatformImageOptions {
+    val author = input.trim().ifEmpty { null }
+    return copy(
+        svgModel = author,
+        svgReasoningEffort = svgReasoningEffort.takeIf { author != null && author == svgModel },
+    )
 }
 
 @Composable
@@ -162,18 +172,22 @@ internal fun PlatformImageParamsSheet(
                 Text("GIF 以 10 毫秒为单位保存帧间隔。可用静态图片作为动画参考。", style = MaterialTheme.typography.bodySmall)
             } else if (format == "svg") {
                 FormItem(
-                    label = { Text("SVG 编写模型") },
-                    description = { Text("已获项目权限时可指定模型 ID。留空使用服务端默认值。") },
+                    label = { Text("SVG 编写模型（可选）") },
+                    description = {
+                        Text("$modelId 先生成参考图，编写模型再根据参考图编写 SVG 矢量图。两步均使用当前 OpenAI Platform 项目的 API 额度。")
+                    },
                 ) {
                     OutlinedTextField(
                         value = opt.svgModel.orEmpty(),
-                        onValueChange = {
-                            val author = it.trim().ifEmpty { null }
-                            options(opt.copy(svgModel = author, svgReasoningEffort = opt.svgReasoningEffort.takeIf { author != null }))
-                        },
+                        onValueChange = { options(opt.selectSvgAuthor(it)) },
+                        label = { Text("Platform 模型 ID") },
+                        supportingText = { Text("留空时请求会省略编写模型参数。若项目要求指定，请填入该项目有权使用的模型 ID。") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                     )
+                    TextButton(onClick = { options(opt.selectSvgAuthor(SVG_AUTHOR_EXAMPLE)) }) {
+                        Text("填入示例 $SVG_AUTHOR_EXAMPLE")
+                    }
                 }
                 if (!opt.svgModel.isNullOrBlank()) {
                     Choice("编写模型的推理强度", opt.svgReasoningEffort,
@@ -197,7 +211,7 @@ internal fun PlatformImageParamsSheet(
                 }
                 if (opt.stream == true) {
                     Choice("中间预览数量", opt.partialImages, (0..3).toList(),
-                        hint = "中间图仅用于预览。图库中保存最终图片。") { options(opt.copy(partialImages = it)) }
+                        hint = "Images API 默认返回 0 张中间预览。想看生成过程可选 1–3 张。生成较快时，收到的预览可能少于所选数量。图库仅保存最终图片。") { options(opt.copy(partialImages = it)) }
                 }
             }
             Choice("内容审核（moderation）", opt.moderation, listOf("auto", "low")) {

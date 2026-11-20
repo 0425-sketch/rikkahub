@@ -82,6 +82,9 @@ data class MediaCreationSubmission(
     val assets: List<MediaCreationAsset>,
 )
 
+/** Only the latest frame is kept while a record is running. The count survives UI resubscriptions. */
+class MediaCreationPreview(val bytes: ByteArray, val received: Int)
+
 /**
  * 媒体创作的生成任务。每条记录一个协程，互不阻塞；任务挂在应用级作用域上，离开页面后继续运行，
  * 并由 [MediaCreationForegroundService] 把进程留在前台。
@@ -99,7 +102,7 @@ class MediaCreationService(
     private val okHttpClient: OkHttpClient,
 ) {
     private val jobs = ConcurrentHashMap<Uuid, Job>()
-    private val partialImages = MutableStateFlow<Map<Uuid, ByteArray>>(emptyMap())
+    private val partialImages = MutableStateFlow<Map<Uuid, MediaCreationPreview>>(emptyMap())
     val previews = partialImages.asStateFlow()
 
     /**
@@ -341,6 +344,9 @@ class MediaCreationService(
                     it.params.copy(imageResult = PlatformImageResultInfo(
                         model = task.model, quality = field("quality"), size = field("size"),
                         background = field("background"), format = field("output_format"), complexity = field("complexity"),
+                        receivedPartialImages = if (it.params.platformOptions.stream == true) {
+                            partialImages.value[record.id]?.received ?: 0
+                        } else null,
                     ))
                 } else it.params
                 it.copy(status = MediaCreationStatus.SUCCEEDED, outputs = outputs, params = params, error = null)
@@ -367,7 +373,12 @@ class MediaCreationService(
             repository.resolve(it).absolutePath
         }
         return manager.create(setting, model, request) { preview ->
-            preview.data?.let { bytes -> partialImages.update { it + (record.id to bytes) } }
+            preview.data?.let { bytes ->
+                partialImages.update { frames ->
+                    val received = (frames[record.id]?.received ?: 0) + 1
+                    frames + (record.id to MediaCreationPreview(bytes, received))
+                }
+            }
         }.getOrElse {
             currentCoroutineContext().ensureActive()
             throw it

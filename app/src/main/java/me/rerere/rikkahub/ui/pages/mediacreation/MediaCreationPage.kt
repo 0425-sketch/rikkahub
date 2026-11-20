@@ -49,6 +49,7 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,6 +86,7 @@ import me.rerere.rikkahub.data.model.MediaCreationOutput
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.model.MediaCreationNode
+import me.rerere.rikkahub.data.model.MediaCreationStatus
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
@@ -311,7 +313,7 @@ fun MediaCreationPage(id: String) {
 }
 
 @Composable
-private fun MediaCreationTimeline(
+internal fun MediaCreationTimeline(
     vm: MediaCreationVM,
     nodes: LazyPagingItems<MediaCreationNode>,
     editingNodeId: Uuid?,
@@ -358,15 +360,25 @@ private fun MediaCreationTimeline(
         ) { index ->
             val node = nodes[index]
             if (node != null) {
-                MediaCreationRecordItem(
-                    node = node,
-                    editing = node.id == editingNodeId,
-                    selected = selectedNodes?.let { node.id in it },
-                    onEditImage = if (node.record.providerId in platformIds) {
-                        { output -> onEditImage(node.record, output) }
-                    } else null,
-                    vm = vm,
-                )
+                key(node.record.id) {
+                    // Failed and cancelled records can retry in place. A successful rerun gets a new record ID.
+                    val currentNode = if (node.record.status != MediaCreationStatus.SUCCEEDED) {
+                        val updates = remember(vm, node.record.id) { vm.observeRecord(node.record.id) }
+                        val current by updates.collectAsStateWithLifecycle(initialValue = node.record)
+                        current?.let { node.copy(record = it) }
+                    } else node
+                    if (currentNode != null) {
+                        MediaCreationRecordItem(
+                            node = currentNode,
+                            editing = node.id == editingNodeId,
+                            selected = selectedNodes?.let { node.id in it },
+                            onEditImage = if (currentNode.record.providerId in platformIds) {
+                                { output -> onEditImage(currentNode.record, output) }
+                            } else null,
+                            vm = vm,
+                        )
+                    }
+                }
             } else {
                 // 还没加载到的记录先占位，保证列表总长度和滚动位置稳定
                 Surface(

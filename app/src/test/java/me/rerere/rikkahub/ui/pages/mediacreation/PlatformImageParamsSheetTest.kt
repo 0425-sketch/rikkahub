@@ -113,4 +113,17 @@ class PlatformImageParamsSheetTest {
         )
         assertEquals(MediaCreationParams(), vector.selectPlatformFormat(null))
     }
+
+    @Test
+    fun svgAuthorCanBeFilledOverriddenOrOmittedWithoutReusingAnotherModelsEffort() {
+        val svg = MediaCreationParams().selectPlatformFormat("svg")
+        val unspecified = svg.platformOptions
+        assertNull(unspecified.svgModel)
+        val example = unspecified.selectSvgAuthor("gpt-6.2-sol")
+        assertEquals("gpt-6.2-sol", example.svgModel)
+        val configured = example.copy(svgReasoningEffort = "high")
+        assertEquals(configured, configured.selectSvgAuthor(" gpt-6.2-sol "))
+        assertEquals(unspecified.copy(svgModel = "another-platform-model"), configured.selectSvgAuthor("another-platform-model"))
+        assertEquals(unspecified, configured.selectSvgAuthor(" "))
+    }
 }

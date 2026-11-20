@@ -160,8 +160,8 @@ internal fun MediaCreationRecordItem(
                 )
                 when {
                     record.status.isActive -> {
-                        RecordProgress(record)
-                        if (onEditImage != null) PlatformStreamPreview(record.id, vm)
+                        RecordProgress(record, platform = onEditImage != null)
+                        if (onEditImage != null) PlatformStreamPreview(record, vm)
                     }
 
                     record.status == MediaCreationStatus.SUCCEEDED -> RecordOutputs(
@@ -344,7 +344,7 @@ private fun InputThumbnail(
 }
 
 @Composable
-private fun RecordProgress(record: MediaCreationRecord) {
+private fun RecordProgress(record: MediaCreationRecord, platform: Boolean) {
     // 当前阶段已经持续的时间
     val elapsed by produceState(initialValue = elapsedSeconds(record.updateAt), record.updateAt) {
         while (true) {
@@ -363,8 +363,11 @@ private fun RecordProgress(record: MediaCreationRecord) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ContainedLoadingIndicator(modifier = Modifier.size(32.dp))
+            val status = if (platform && record.status == MediaCreationStatus.DOWNLOADING) {
+                stringResource(R.string.media_creation_platform_status_saving)
+            } else record.status.label
             Text(
-                text = "${record.status.label}  %d:%02d".format(elapsed / 60, elapsed % 60),
+                text = "$status  %d:%02d".format(elapsed / 60, elapsed % 60),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }

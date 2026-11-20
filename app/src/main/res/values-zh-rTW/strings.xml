@@ -1418,6 +1418,7 @@
   <string name="media_creation_status_queued">已排隊</string>
   <string name="media_creation_status_running">生成中</string>
   <string name="media_creation_status_downloading">正在下載結果</string>
+  <string name="media_creation_platform_status_saving">正在儲存圖片</string>
   <string name="media_creation_status_succeeded">已完成</string>
   <string name="media_creation_status_failed">生成失敗</string>
   <string name="media_creation_status_cancelled">已取消</string>

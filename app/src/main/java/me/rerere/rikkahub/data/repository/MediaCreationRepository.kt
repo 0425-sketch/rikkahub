@@ -8,6 +8,7 @@ import androidx.paging.map
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -154,6 +155,9 @@ class MediaCreationRepository(
     // ---- 记录 ----
 
     suspend fun getRecord(id: Uuid): MediaCreationRecord? = dao.getRecord(id.toString())?.toRecord()
+
+    fun observeRecord(id: Uuid): Flow<MediaCreationRecord?> =
+        dao.observeRecord(id.toString()).distinctUntilChanged().map { it?.toRecord() }
 
     suspend fun getRecordsOfSession(sessionId: Uuid): List<MediaCreationRecord> =
         dao.getRecordsOfSession(sessionId.toString()).map { it.toRecord() }

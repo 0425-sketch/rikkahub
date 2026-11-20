@@ -142,6 +142,8 @@ class MediaCreationVM(
 
     val nodes: Flow<PagingData<MediaCreationNode>> = repository.observeNodes(sessionId).cachedIn(viewModelScope)
 
+    fun observeRecord(id: Uuid): Flow<MediaCreationRecord?> = repository.observeRecord(id)
+
     val selection: StateFlow<MediaCreationModelSelection?> =
         combine(settingsStore.settingsFlow, draft) { settings, draft ->
             settings.mediaGenerationProviders.findSelection(draft.modelId)
