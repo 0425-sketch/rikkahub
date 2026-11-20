@@ -44,6 +44,7 @@ data class PlatformImageOptions(
             "压缩质量仅适用于 JPEG/WebP，范围为 0 至 100"
         }
         require(stream != true || format !in listOf("gif", "svg")) { "$format 不支持流式生成" }
+        require(stream != true || (count ?: 1) == 1) { "流式生成只支持 1 张图，请将数量设为 1 或关闭流式生成。" }
         require(partialImages == null || (stream == true && partialImages in 0..3)) { "流式预览数量须为 0 至 3" }
         require(frameCount == null || (format == "gif" && frameCount in 2..16)) { "GIF 帧数须为 2 至 16" }
         require(frameDurationMs == null || (format == "gif" && frameDurationMs in 20..2000)) {

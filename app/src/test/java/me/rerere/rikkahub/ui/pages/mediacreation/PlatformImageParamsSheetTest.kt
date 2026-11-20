@@ -19,6 +19,39 @@ class PlatformImageParamsSheetTest {
     private val model = "gpt-image-2.6-flare"
 
     @Test
+    fun choosingMultipleImagesClearsStreamingAndPreviewsUntilEnabledAgain() {
+        val options = PlatformImageOptions(outputFormat = "webp", quality = "xhigh", stream = true, partialImages = 3)
+        val single = MediaCreationParams(count = 1, resolution = "1536x1024", platformOptions = options)
+        val batch = single.selectPlatformCount(4)
+        val synchronous = options.copy(stream = null, partialImages = null)
+
+        assertEquals(single.copy(count = 4, platformOptions = synchronous), batch)
+        assertEquals(single.copy(platformOptions = synchronous), batch.selectPlatformCount(1))
+        assertEquals(single.copy(count = null, platformOptions = synchronous), batch.selectPlatformCount(null))
+        for (editing in listOf(false, true)) {
+            assertNull(platformParameterError(model, editing, batch))
+        }
+    }
+
+    @Test
+    fun restoredStreamingBatchCanKeepEitherItsRequestedCountOrItsPreviews() {
+        val saved = MediaCreationParams(
+            count = 4,
+            platformOptions = PlatformImageOptions(quality = "high", stream = true, partialImages = 2),
+        )
+        val keepCount = saved.selectPlatformCount(saved.count)
+        val keepPreviews = saved.selectPlatformCount(1)
+
+        assertEquals(saved.copy(platformOptions = PlatformImageOptions(quality = "high")), keepCount)
+        assertEquals(saved.copy(count = 1), keepPreviews)
+        for (editing in listOf(false, true)) {
+            assertNotNull(platformParameterError(model, editing, saved))
+            assertNull(platformParameterError(model, editing, keepCount))
+            assertNull(platformParameterError(model, editing, keepPreviews))
+        }
+    }
+
+    @Test
     fun composerRoutesHistoryBeforeSubmittingAndPreservesExplicitReferences() {
         val platform = MediaGenerationProviderSetting.OpenAIPlatform().capabilities(MediaKind.IMAGE)!!
         val compatible = MediaGenerationProviderSetting.OpenAI().capabilities(MediaKind.IMAGE)!!

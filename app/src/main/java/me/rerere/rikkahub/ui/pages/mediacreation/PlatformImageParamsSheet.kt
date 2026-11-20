@@ -76,6 +76,15 @@ internal fun MediaCreationParams.selectPlatformFormat(format: String?): MediaCre
     )
 }
 
+internal fun MediaCreationParams.selectPlatformCount(count: Int?): MediaCreationParams {
+    val options = if ((count ?: 1) > 1) {
+        platformOptions.copy(stream = null, partialImages = null)
+    } else {
+        platformOptions
+    }
+    return copy(count = count, platformOptions = options)
+}
+
 @Composable
 internal fun PlatformImageParamsSheet(
     modelId: String,
@@ -130,7 +139,7 @@ internal fun PlatformImageParamsSheet(
                 Text("SVG 每次生成 1 张。")
             } else {
                 NumberParam("数量（1–10）", current.count?.toLong(), listOf(1L, 2L, 4L),
-                    onValueChange = { update(current.copy(count = it?.toInt())) }, maxDigits = 2)
+                    onValueChange = { update(current.selectPlatformCount(it?.toInt())) }, maxDigits = 2)
             }
             val backgrounds = if (format == "gif" || format == "jpeg") listOf("auto", "opaque")
                 else listOf("auto", "opaque", "transparent")
@@ -170,6 +179,17 @@ internal fun PlatformImageParamsSheet(
                     Choice("编写模型的推理强度", opt.svgReasoningEffort,
                         listOf("none", "minimal", "low", "medium", "high", "xhigh", "max"),
                         hint = "可用档位取决于所填的编写模型。") { options(opt.copy(svgReasoningEffort = it)) }
+                }
+            } else if ((current.count ?: 1) > 1) {
+                FormItem(
+                    label = { Text("流式生成") },
+                    description = { Text("流式仅支持 1 张，若要预览请将数量改为 1。") },
+                ) {
+                    if (opt.stream == true || opt.partialImages != null) {
+                        TextButton(onClick = { update(current.selectPlatformCount(current.count)) }) {
+                            Text("关闭流式，保留 ${current.count} 张")
+                        }
+                    }
                 }
             } else {
                 Choice("流式生成", opt.stream, listOf(true), label = { "开启" }) {

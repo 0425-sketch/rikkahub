@@ -179,19 +179,66 @@ class PlatformImagesTest {
     }
 
     @Test
+    fun multiImageStreamingIsRejectedBeforeSendingGenerationOrEdit() = runBlocking {
+        val base = files.newFile("base.png").apply { writeBytes(Base64.decode(PNG)) }
+        val editInputs = listOf(MediaGenerationInput.Image(base.path))
+        val restored = Json.decodeFromString<MediaGenerationRequest>(
+            """{"prompt":"四张图","count":4,"platformOptions":{"stream":true,"partialImages":1}}"""
+        )
+        val requests = mutableListOf<Request>()
+        val manager = MediaGenerationManager(fakeClient(requests) { jsonResponse(it, payload(PNG)) })
+        for (imageModel in setting.models) {
+            for (inputs in listOf(emptyList(), editInputs)) {
+                val error = manager.create(setting, imageModel, restored.copy(inputs = inputs)).exceptionOrNull()
+                assertTrue(error is IllegalArgumentException)
+                assertTrue(error?.message.orEmpty().contains("流式生成只支持 1 张图"))
+            }
+        }
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun nonStreamingBatchPreservesCountForBothEndpoints() = runBlocking {
+        val base = files.newFile("base.png").apply { writeBytes(Base64.decode(PNG)) }
+        val requests = mutableListOf<Request>()
+        val manager = MediaGenerationManager(fakeClient(requests) {
+            jsonResponse(it, """{"data":[{"b64_json":"$PNG"},{"b64_json":"$TRANSPARENT"}]}""")
+        })
+        val request = prompt.copy(count = 2, platformOptions = PlatformImageOptions(stream = false))
+        for (inputs in listOf(emptyList(), listOf(MediaGenerationInput.Image(base.path)))) {
+            val outputs = manager.create(setting, model, request.copy(inputs = inputs)).getOrThrow().outputs
+            assertEquals(2, outputs.size)
+            assertArrayEquals(Base64.decode(PNG), outputs[0].data)
+            assertArrayEquals(Base64.decode(TRANSPARENT), outputs[1].data)
+        }
+        assertEquals(listOf("/v1/images/generations", "/v1/images/edits"), requests.map { it.url.encodedPath })
+        val json = Json.parseToJsonElement(requests.first().bodyAsString()).jsonObject
+        assertEquals("2", json["n"].toString())
+        assertFalse("stream" in json || "partial_images" in json)
+        val multipart = requests.last().body as MultipartBody
+        val fields = multipart.parts.filter { it.body.contentType() == null }.associate { part ->
+            part.headers!!["Content-Disposition"]!!.substringAfter("name=\"").substringBefore('"') to
+                Buffer().also(part.body::writeTo).readUtf8()
+        }
+        assertEquals("2", fields["n"])
+        assertFalse("stream" in fields || "partial_images" in fields)
+    }
+
+    @Test
     fun streamPreviewsNeverBecomeFinalFilesAndInterruptedStreamFails() = runBlocking {
         fun sse(request: Request, events: String): Response = jsonResponse(request, "").newBuilder()
             .body(events.toResponseBody("text/event-stream".toMediaType())).build()
         val partial = """data: {"type":"image_generation.partial_image","b64_json":"$TRANSPARENT","partial_image_index":0}""" + "\n\n"
         val complete = """data: {"type":"image_generation.completed","b64_json":"$PNG","output_format":"png"}""" + "\n\n"
-        val manager = MediaGenerationManager(fakeClient { sse(it, partial + complete + complete) })
-        val request = prompt.copy(count = 2, platformOptions = PlatformImageOptions(stream = true, partialImages = 1))
-        val previews = mutableListOf<MediaGenerationOutput>()
-        val final = manager.create(setting, model, request) { previews += it }.getOrThrow()
-        assertArrayEquals(Base64.decode(TRANSPARENT), previews.single().data)
-        assertEquals(2, final.outputs.size)
-        assertTrue(final.outputs.all { it.data!!.contentEquals(Base64.decode(PNG)) })
-        assertFalse(final.metadata.containsKey("b64_json"))
+        val manager = MediaGenerationManager(fakeClient { sse(it, partial + complete) })
+        val request = prompt.copy(platformOptions = PlatformImageOptions(stream = true, partialImages = 1))
+        for (count in listOf(null, 1)) {
+            val previews = mutableListOf<MediaGenerationOutput>()
+            val final = manager.create(setting, model, request.copy(count = count)) { previews += it }.getOrThrow()
+            assertArrayEquals(Base64.decode(TRANSPARENT), previews.single().data)
+            assertArrayEquals(Base64.decode(PNG), final.outputs.single().data)
+            assertFalse(final.metadata.containsKey("b64_json"))
+        }
         val interrupted = MediaGenerationManager(fakeClient { sse(it, partial) })
         assertTrue(interrupted.create(setting, model, request).isFailure)
         val denied = MediaGenerationManager(fakeClient {
