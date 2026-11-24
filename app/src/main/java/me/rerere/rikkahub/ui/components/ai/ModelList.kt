@@ -319,9 +319,19 @@ internal fun ModelField(
 @Composable
 fun ModelListSheet(
     state: ModelListState,
+    modelFilter: ((Model) -> Boolean)? = null,
     onSelect: (Model) -> Unit,
 ) {
     if (!state.visible) return
+
+    val eligibleProviders = remember(state.providers, state.type, modelFilter) {
+        modelFilter?.let { accepts ->
+            state.filteredProviders.mapNotNull { provider ->
+                val models = provider.models.filter { it.type == state.type && accepts(it) }
+                if (models.isEmpty()) null else provider.copyProvider(models = models)
+            }
+        }
+    }
 
     val coroutineScope = rememberCoroutineScope()
     val sheetState = rememberBottomSheetState(
@@ -351,7 +361,8 @@ fun ModelListSheet(
         ) {
             ModelList(
                 currentModel = state.modelId,
-                providers = state.filteredProviders,
+                providers = eligibleProviders ?: state.filteredProviders,
+                favoriteProviders = eligibleProviders,
                 modelType = state.type,
                 onSelect = {
                     onSelect(it)
@@ -369,6 +380,7 @@ fun ModelListSheet(
 private fun ColumnScope.ModelList(
     currentModel: Uuid? = null,
     providers: List<ProviderSetting>,
+    favoriteProviders: List<ProviderSetting>?,
     modelType: ModelType,
     onSelect: (Model) -> Unit,
     onDismiss: () -> Unit
@@ -381,10 +393,11 @@ private fun ColumnScope.ModelList(
     // 拖动排序时先改这份本地顺序，松手再写回设置。设置是异步回到界面的，拖到边缘自动滚动时拖拽库每帧都会按
     // 旧布局再算一次移动，直接改设置会让顺序被反复改回去，看起来就是来回抽搐
     var draggingFavoriteOrder by remember { mutableStateOf<List<Uuid>?>(null) }
+    val favoriteSources = favoriteProviders ?: settings.value.providers
     val favoriteModels = (draggingFavoriteOrder ?: settings.value.favoriteModels).mapNotNull { modelId ->
-        val model = settings.value.providers.findModelById(modelId) ?: return@mapNotNull null
+        val model = favoriteSources.findModelById(modelId) ?: return@mapNotNull null
         if (model.type != modelType) return@mapNotNull null
-        val provider = model.findProvider(providers = settings.value.providers, checkOverwrite = false) ?: return@mapNotNull null
+        val provider = model.findProvider(providers = favoriteSources, checkOverwrite = false) ?: return@mapNotNull null
         model to provider
     }
 

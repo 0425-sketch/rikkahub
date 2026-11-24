@@ -29,7 +29,7 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
         self.assertEqual(release.VERSION_NAME, re.search(r'val personalVersionName = "([^"]+)"', source)[1])
         self.assertIn("output.versionCode.set(personalVersionCode)", source)
         self.assertIn("output.versionName.set(personalVersionName)", source)
-        self.assertGreater(release.VERSION_CODE, 204)
+        self.assertGreater(release.VERSION_CODE, 205)
         self.assertRegex(release.VERSION_NAME, r"\A[0-9]+\.[0-9]+\.[0-9]+-personal\.[1-9][0-9]*\Z")
 
     def test_inspection_rejects_unsigned_apk_before_publication(self):

@@ -130,6 +130,9 @@ class SettingsStore internal constructor(
         val SUGGESTION_PROMPT = stringPreferencesKey("suggestion_prompt")
         val OCR_MODEL = stringPreferencesKey("ocr_model")
         val OCR_PROMPT = stringPreferencesKey("ocr_prompt")
+        val PROMPT_ENHANCEMENT_MODEL = stringPreferencesKey("prompt_enhancement_model")
+        val CHAT_ENHANCEMENT_PROMPT = stringPreferencesKey("chat_enhancement_prompt")
+        val IMAGE_ENHANCEMENT_PROMPT = stringPreferencesKey("image_enhancement_prompt")
 
         // 自动压缩
         val ENABLE_AUTO_COMPRESS = booleanPreferencesKey("enable_auto_compress")

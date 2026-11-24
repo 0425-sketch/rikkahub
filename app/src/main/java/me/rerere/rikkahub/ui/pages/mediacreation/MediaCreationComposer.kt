@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -113,6 +114,7 @@ import me.rerere.mediagen.provider.MediaGenerationParameter
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
 import me.rerere.mediagen.provider.capabilities
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.PromptEnhancementMode
 import me.rerere.rikkahub.data.model.supportsPlatformEditing
 import me.rerere.rikkahub.data.model.MediaCreationAsset
 import me.rerere.rikkahub.data.model.MediaCreationAssetType
@@ -123,6 +125,7 @@ import me.rerere.rikkahub.data.model.canSubmit
 import me.rerere.rikkahub.data.model.mixesFramesWithReferences
 import me.rerere.rikkahub.data.model.withRequired
 import me.rerere.rikkahub.ui.components.ai.PickerHeader
+import me.rerere.rikkahub.ui.components.ai.PromptEnhancementButton
 import me.rerere.ui.components.FormItem
 import me.rerere.ui.components.Tooltip
 import me.rerere.ui.sketch.SketchDialog
@@ -266,6 +269,7 @@ internal fun MediaCreationComposer(
 
             TextField(
                 state = vm.promptState,
+                inputTransformation = vm.trackPromptEdits,
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(stringResource(R.string.media_creation_page_prompt_placeholder)) },
                 lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 1, maxHeightInLines = 5),
@@ -296,10 +300,18 @@ internal fun MediaCreationComposer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Row(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (selection?.model?.kind == MediaKind.IMAGE) {
+                        PromptEnhancementButton(
+                            mode = PromptEnhancementMode.IMAGE,
+                            textState = vm.promptState,
+                            draftEpoch = { vm.promptDraftEpoch },
+                            editRevision = { vm.promptEditRevision },
+                        )
+                    }
                     ModelButton(model = selection?.model, onClick = { showModels = true })
                     if (selection != null && capabilities != null && capabilities.parameters.isNotEmpty()) {
                         val summary = if (isPlatform) {
@@ -313,7 +325,7 @@ internal fun MediaCreationComposer(
                             text = summary.take(3).joinToString(" · ")
                                 .ifEmpty { stringResource(R.string.media_creation_page_params) },
                             onClick = { showParams = true },
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier.widthIn(max = 200.dp),
                         )
                     }
                 }

@@ -1944,4 +1944,19 @@
   <string name="cache_diagnostic_off_desc">Default. Stop collection and clear diagnostics. Normal usage statistics and server caching remain active.</string>
   <string name="cache_diagnostic_light_desc">Model, duration, status and reported usage only. No content fingerprints.</string>
   <string name="cache_diagnostic_full_desc">Also collect bounded request fingerprints, prefix differences and retry links. Oversized diagnostics are marked incomplete; model requests are unchanged.</string>
+  <string name="prompt_enhancement">Enhance prompt</string>
+  <string name="prompt_enhancement_working">Enhancing draft</string>
+  <string name="prompt_enhancement_undo">Undo</string>
+  <string name="prompt_enhancement_review">Review rewrite</string>
+  <string name="prompt_enhancement_conflict">You edited this draft. Use the rewrite below?</string>
+  <string name="prompt_enhancement_apply">Use rewrite</string>
+  <string name="prompt_enhancement_keep">Keep my draft</string>
+  <string name="prompt_enhancement_select_model">Choose a text model in Settings → Default models and prompts → Prompt enhancement model.</string>
+  <string name="prompt_enhancement_empty">The model returned no text. Your draft was kept.</string>
+  <string name="prompt_enhancement_failed">Could not enhance the draft. Check the model or connection and try again.</string>
+  <string name="setting_model_page_enhancement_model">Prompt enhancement model</string>
+  <string name="setting_model_page_enhancement_model_desc">Rewrites chat and image drafts. Edit each rule in the Prompts tab.</string>
+  <string name="setting_model_page_prompt_chat_enhancement">Chat prompt enhancement</string>
+  <string name="setting_model_page_prompt_image_enhancement">Image prompt enhancement</string>
+  <string name="setting_model_page_prompt_enhancement_hint">Changes save automatically. The model receives these instructions along with the current draft. Leave blank to use the default rule.</string>
 </resources>

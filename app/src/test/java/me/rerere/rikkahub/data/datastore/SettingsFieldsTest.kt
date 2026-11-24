@@ -10,6 +10,8 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_CHAT_ENHANCEMENT_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_IMAGE_ENHANCEMENT_PROMPT
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
@@ -76,6 +78,9 @@ class SettingsFieldsTest {
         assertEquals(DEFAULT_SYSTEM_TTS_ID, settings.selectedTTSProviderId)
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(null, settings.memoryModelId)
+        assertEquals(null, settings.promptEnhancementModelId)
+        assertEquals(DEFAULT_CHAT_ENHANCEMENT_PROMPT, settings.chatEnhancementPrompt)
+        assertEquals(DEFAULT_IMAGE_ENHANCEMENT_PROMPT, settings.imageEnhancementPrompt)
         assertEquals(true, settings.dynamicColor)
         assertEquals(8080, settings.webServerPort)
     }
@@ -157,6 +162,9 @@ private val SAMPLE = Settings(
     suggestionPrompt = "suggestion",
     ocrModelId = id(5),
     ocrPrompt = "ocr",
+    promptEnhancementModelId = id(40),
+    chatEnhancementPrompt = "chat rule\nwith new line",
+    imageEnhancementPrompt = "image rule",
     enableAutoCompress = false,
     autoCompressThreshold = 0.9f,
     assistantId = id(20),
@@ -218,6 +226,9 @@ private val STORED_KEYS = setOf(
     "suggestion_prompt",
     "ocr_model",
     "ocr_prompt",
+    "prompt_enhancement_model",
+    "chat_enhancement_prompt",
+    "image_enhancement_prompt",
     "enable_auto_compress",
     "auto_compress_threshold",
     "providers",

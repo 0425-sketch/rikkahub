@@ -229,8 +229,8 @@ androidComponents {
         // A distinct identity keeps the previously installed app and all of its data intact.
         // Durable signing and two clean restore builds are required before publication.
         variant.applicationId.set("me.rerere.rikkahub.personal")
-        val personalVersionCode = 205
-        val personalVersionName = "3.3.0-personal.5"
+        val personalVersionCode = 206
+        val personalVersionName = "3.3.0-personal.6"
         variant.outputs.forEach { output ->
             output.versionCode.set(personalVersionCode)
             output.versionName.set(personalVersionName)

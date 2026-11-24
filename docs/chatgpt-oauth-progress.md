@@ -10,6 +10,10 @@
 
 本次发布时，默认分支收到了两次符合路径规则的推送，均未创建运行记录。11:10 UTC，当前连接手工启动时返回 HTTP 422（`Actions has been disabled for this repository.`，请求编号 `9E36:160927:2BFAFED:8B8EF70:6B002A8F`）。仓库所有者页面显示允许 Actions，工作流为 `active`。所有者在同一签名工作流页面对 `custom-3.2.0` 点击 **Run workflow**，第 12 次运行成功完成。接口拒绝的具体原因未查明。后续遇到同样情况，先按提交核对实际运行记录，区分接口报错和仓库设置。[第 12 次构建](https://github.com/0425-sketch/rikkahub/actions/runs/44726648705)
 
+### 206 / 3.3.0-personal.6 · 提示词增强待发布
+
+聊天和媒体生图已接入草稿提示词增强。已递增自用版本号，按现有双签名恢复流程准备交付。[使用方法、两份默认规则与验证记录](prompt-enhancement.md)
+
 ## 已发布签名版 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
 
 204 已在自用仓库发布为预发布版，包含 203 的 OpenAI Platform 图像功能。202 和 203 均可从聊天侧栏直接发现并下载 204，由 Android 确认覆盖安装。后续开发从远端默认分支 `custom-3.2.0` 的最新提交开始。[预发布与附件](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-1ed6047a10e6-44632703073-1) · [APK 构建源码](https://github.com/0425-sketch/rikkahub/commit/1ed6047a10e64ded98b64ad9ef6f167eeed0cd26) · [构建记录](https://github.com/0425-sketch/rikkahub/actions/runs/44632703073)

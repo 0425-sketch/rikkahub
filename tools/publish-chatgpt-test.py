@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 205
-VERSION_NAME = "3.3.0-personal.5"
+VERSION_CODE = 206
+VERSION_NAME = "3.3.0-personal.6"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 
@@ -217,9 +217,9 @@ def main():
     notes = args.output / "release-notes.txt"
     notes.write_text(
         f"RikkaHub {VERSION_NAME}\n\n"
-        "图片保存完成后，当前卡片会结束计时并显示成图。保持在同一版本即可看到结果。\n"
-        "OpenAI Platform 图像支持单张流式预览，选择多张时会关闭流式。完成后可查看实际收到的预览数。SVG 编写模型可选用已在自用项目验证的 gpt-6.2-sol。\n\n"
-        "已安装自用版 204 的用户可从聊天侧栏下载本次更新，再按 Android 提示覆盖安装。\n\n"
+        "聊天和媒体生图输入框新增提示词增强。先在「设置 → 默认模型和提示词」选择一个文本模型，聊天和生图的增强规则可分别编辑。\n"
+        "点输入框旁的星光按钮会回填增强稿，可以撤销或继续改。等待时又输入了文字，可以预览后决定是否采用。OpenAI Platform 生图也可使用。\n\n"
+        "已安装自用版 205 的用户可从聊天侧栏下载本次更新，再按 Android 提示覆盖安装。\n\n"
         f"[构建源码](https://github.com/{REPO}/commit/{source_sha}) · [构建记录]({metadata['actions_url']})\n\n"
         f"APK SHA-256 `{metadata['apk_sha256']}`\n\n"
         f"<!-- rikkahub-personal-version-code: {VERSION_CODE} -->\n",

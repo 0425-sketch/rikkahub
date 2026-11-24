@@ -36,6 +36,7 @@ import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.supportsPromptEnhancement
 import me.rerere.rikkahub.ui.components.ai.ModelField
 import me.rerere.rikkahub.ui.components.ai.ModelListSheet
 import me.rerere.rikkahub.ui.components.ai.ModelListState
@@ -148,6 +149,11 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
     )
     val ocrModel = rememberModelListState(
         modelId = settings.ocrModelId,
+        providers = settings.providers,
+        type = ModelType.CHAT,
+    )
+    val enhancementModel = rememberModelListState(
+        modelId = settings.promptEnhancementModelId,
         providers = settings.providers,
         type = ModelType.CHAT,
     )
@@ -267,6 +273,15 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                     iconContainerColor = containerColor,
                     iconContentColor = contentColor,
                 )
+                modelItem(
+                    icon = HugeIcons.AiEditing,
+                    title = R.string.setting_model_page_enhancement_model,
+                    description = R.string.setting_model_page_enhancement_model_desc,
+                    state = enhancementModel,
+                    iconContainerColor = containerColor,
+                    iconContentColor = contentColor,
+                    onClear = { vm.updateSettings { latest -> latest.copy(promptEnhancementModelId = null) } },
+                )
             }
         }
     }
@@ -285,6 +300,9 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
     }
     ModelListSheet(state = ocrModel) {
         vm.updateSettings { latest -> latest.copy(ocrModelId = it.id) }
+    }
+    ModelListSheet(state = enhancementModel, modelFilter = { it.supportsPromptEnhancement() }) {
+        vm.updateSettings { latest -> latest.copy(promptEnhancementModelId = it.id) }
     }
 }
 

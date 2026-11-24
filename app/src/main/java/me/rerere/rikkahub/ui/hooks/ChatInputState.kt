@@ -1,9 +1,12 @@
 package me.rerere.rikkahub.ui.hooks
 
 import android.net.Uri
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldBuffer
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.foundation.text.input.placeCursorAtEnd
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import me.rerere.ai.ui.UIMessagePart
@@ -11,6 +14,25 @@ import kotlin.uuid.Uuid
 
 class ChatInputState {
     val textContent = TextFieldState()
+    var draftEpoch by mutableLongStateOf(0L)
+        private set
+    var editRevision by mutableLongStateOf(0L)
+        private set
+
+    // IME edits and programmatic edits both count, including editing away and back to the same text.
+    val trackTextEdits = InputTransformation { recordTextChange() }
+
+    private fun TextFieldBuffer.recordTextChange() {
+        if (changes.changeCount > 0 && !originalText.contentEquals(asCharSequence())) editRevision++
+    }
+
+    fun editMessageText(block: TextFieldBuffer.() -> Unit) {
+        textContent.edit {
+            block()
+            recordTextChange()
+        }
+    }
+
     var messageContent by mutableStateOf(listOf<UIMessagePart>())
     var editingMessage by mutableStateOf<Uuid?>(null)
 
@@ -21,7 +43,7 @@ class ChatInputState {
     private var editingAttachmentUrls: Set<String> = emptySet()
 
     fun clearInput() {
-        textContent.setTextAndPlaceCursorAtEnd("")
+        replaceDraftText("")
         messageContent = emptyList()
         editingMessage = null
         editingReasoning = null
@@ -32,7 +54,15 @@ class ChatInputState {
     fun isEditing() = editingMessage != null
 
     fun setMessageText(text: String) {
-        textContent.setTextAndPlaceCursorAtEnd(text)
+        editMessageText {
+            replace(0, length, text)
+            placeCursorAtEnd()
+        }
+    }
+
+    fun replaceDraftText(text: String) {
+        draftEpoch++
+        setMessageText(text)
     }
 
     // 追加到已有文本之后；已有内容且不以换行结尾时自动补一个换行
@@ -43,7 +73,7 @@ class ChatInputState {
             current.endsWith('\n') -> current + content
             else -> current + "\n" + content
         }
-        textContent.setTextAndPlaceCursorAtEnd(text)
+        setMessageText(text)
     }
 
     fun setContents(contents: List<UIMessagePart>) {
@@ -53,7 +83,7 @@ class ChatInputState {
         } else {
             ""
         }
-        textContent.setTextAndPlaceCursorAtEnd(text)
+        replaceDraftText(text)
         val reasoning = contents.editableReasoningOrNull()
         editingReasoning = reasoning?.let { TextFieldState(it.reasoning) }
         messageContent = contents.filter { it !is UIMessagePart.Text && (reasoning == null || it !is UIMessagePart.Reasoning) }

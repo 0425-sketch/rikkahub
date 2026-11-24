@@ -192,7 +192,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
         }
         text?.base64Decode()?.let { decodedText ->
             if (decodedText.isNotEmpty()) {
-                inputState.setMessageText(decodedText)
+                inputState.replaceDraftText(decodedText)
             }
         }
     }
@@ -499,7 +499,7 @@ private fun ChatPageContent(
                 },
                 onClickSuggestion = { suggestion ->
                     inputState.editingMessage = null
-                    inputState.setMessageText(suggestion)
+                    inputState.replaceDraftText(suggestion)
                 },
                 onTranslate = { message, locale ->
                     vm.translateMessage(message, locale)

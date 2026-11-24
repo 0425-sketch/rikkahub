@@ -124,6 +124,15 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         plain(SUGGESTION_PROMPT, Settings::suggestionPrompt) { copy(suggestionPrompt = it) },
         uuid(OCR_MODEL, Settings::ocrModelId) { copy(ocrModelId = it) },
         plain(OCR_PROMPT, Settings::ocrPrompt) { copy(ocrPrompt = it) },
+        SettingsField(
+            PROMPT_ENHANCEMENT_MODEL,
+            Settings::promptEnhancementModelId,
+            { copy(promptEnhancementModelId = it) },
+            encode = { it?.toString() },
+            decode = { Uuid.parse(it) },
+        ),
+        plain(CHAT_ENHANCEMENT_PROMPT, Settings::chatEnhancementPrompt) { copy(chatEnhancementPrompt = it) },
+        plain(IMAGE_ENHANCEMENT_PROMPT, Settings::imageEnhancementPrompt) { copy(imageEnhancementPrompt = it) },
 
         // 自动压缩
         plain(ENABLE_AUTO_COMPRESS, Settings::enableAutoCompress) { copy(enableAutoCompress = it) },

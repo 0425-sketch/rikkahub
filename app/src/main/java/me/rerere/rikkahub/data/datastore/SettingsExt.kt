@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.data.datastore
 
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelType
+import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.rikkahub.data.model.Assistant
@@ -9,6 +11,9 @@ import kotlin.uuid.Uuid
 
 /** 所有提供商都还没有添加模型，视为尚未完成配置。 */
 fun Settings.isNotConfigured() = providers.all { it.models.isEmpty() }
+
+internal fun Model.supportsPromptEnhancement(): Boolean =
+    type == ModelType.CHAT && Modality.TEXT in inputModalities && Modality.TEXT in outputModalities
 
 /**
  * 按 ID 查找模型。

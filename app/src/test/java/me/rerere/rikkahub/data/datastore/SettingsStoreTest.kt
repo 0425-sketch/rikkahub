@@ -19,6 +19,8 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_CHAT_ENHANCEMENT_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_IMAGE_ENHANCEMENT_PROMPT
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.ai.provider.providers.chatgpt.CacheDiagnosticMode
 import me.rerere.ai.provider.providers.chatgpt.ChatGPTCacheDiagnostics
@@ -88,6 +90,37 @@ class SettingsStoreTest {
         val disabled = reopened()
         assertFalse(disabled.requestLoggingEnabled)
         assertEquals(CacheDiagnosticMode.OFF, disabled.cacheDiagnosticMode)
+    }
+
+    @Test
+    fun `enhancement model and independent rule edits survive reopening`() = runBlocking {
+        val store = open().store
+        val modelId = store.awaitLoaded().chatModelId
+        val chat = "chat\nrule"
+        val image = "image\nrule"
+        store.update { it.copy(promptEnhancementModelId = modelId) }
+        store.update { it.copy(chatEnhancementPrompt = chat) }
+        store.update { it.copy(imageEnhancementPrompt = image) }
+
+        val restarted = open().store
+        val restored = restarted.awaitLoaded()
+        assertEquals(modelId, restored.promptEnhancementModelId)
+        assertEquals(chat, restored.chatEnhancementPrompt)
+        assertEquals(image, restored.imageEnhancementPrompt)
+
+        restarted.update { it.copy(chatEnhancementPrompt = DEFAULT_CHAT_ENHANCEMENT_PROMPT) }
+        val resetChat = reopened()
+        assertEquals(DEFAULT_CHAT_ENHANCEMENT_PROMPT, resetChat.chatEnhancementPrompt)
+        assertEquals(image, resetChat.imageEnhancementPrompt)
+        assertEquals(modelId, resetChat.promptEnhancementModelId)
+
+        val latest = open().store
+        latest.update { it.copy(chatEnhancementPrompt = chat) }
+        latest.update { it.copy(imageEnhancementPrompt = DEFAULT_IMAGE_ENHANCEMENT_PROMPT, promptEnhancementModelId = null) }
+        val resetImage = reopened()
+        assertEquals(chat, resetImage.chatEnhancementPrompt)
+        assertEquals(DEFAULT_IMAGE_ENHANCEMENT_PROMPT, resetImage.imageEnhancementPrompt)
+        assertEquals(null, resetImage.promptEnhancementModelId)
     }
 
     @Test

@@ -33,12 +33,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AiEditing
+import me.rerere.hugeicons.stroke.BubbleChat
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Heading
 import me.rerere.hugeicons.stroke.Idea01
 import me.rerere.hugeicons.stroke.ScanText
 import me.rerere.hugeicons.stroke.Translate
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_CHAT_ENHANCEMENT_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_IMAGE_ENHANCEMENT_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
@@ -160,6 +164,22 @@ private enum class PromptSlot(
         default = DEFAULT_OCR_PROMPT,
         get = { it.ocrPrompt },
         set = { settings, value -> settings.copy(ocrPrompt = value) },
+    ),
+    CHAT_ENHANCEMENT(
+        icon = HugeIcons.BubbleChat,
+        title = R.string.setting_model_page_prompt_chat_enhancement,
+        variables = R.string.setting_model_page_prompt_enhancement_hint,
+        default = DEFAULT_CHAT_ENHANCEMENT_PROMPT,
+        get = { it.chatEnhancementPrompt },
+        set = { settings, value -> settings.copy(chatEnhancementPrompt = value) },
+    ),
+    IMAGE_ENHANCEMENT(
+        icon = HugeIcons.AiEditing,
+        title = R.string.setting_model_page_prompt_image_enhancement,
+        variables = R.string.setting_model_page_prompt_enhancement_hint,
+        default = DEFAULT_IMAGE_ENHANCEMENT_PROMPT,
+        get = { it.imageEnhancementPrompt },
+        set = { settings, value -> settings.copy(imageEnhancementPrompt = value) },
     ),
 }
 

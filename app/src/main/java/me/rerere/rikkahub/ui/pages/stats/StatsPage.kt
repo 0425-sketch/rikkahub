@@ -760,6 +760,7 @@ private fun sourceLabel(source: SourceUsage): String {
             UsageSource.TITLE -> R.string.stats_page_source_title
             UsageSource.SUGGESTION -> R.string.stats_page_source_suggestion
             UsageSource.TRANSLATION -> R.string.stats_page_source_translation
+            UsageSource.PROMPT_ENHANCEMENT -> R.string.prompt_enhancement
             UsageSource.MEMORY -> R.string.stats_page_source_memory
             UsageSource.OCR -> R.string.stats_page_source_ocr
         }

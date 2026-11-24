@@ -3,9 +3,13 @@ package me.rerere.rikkahub.ui.pages.mediacreation
 import android.app.Application
 import android.net.Uri
 import android.util.Log
+import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -131,6 +135,15 @@ class MediaCreationVM(
     /** 提示词输入框。草稿里的 prompt 跟随它更新，需要准确值的地方先调用 [syncPrompt]。 */
     val promptState = TextFieldState()
 
+    // 复用同一个输入框显示另一份草稿时，即使两份文字相同，也要丢弃上一份的增强结果。
+    internal var promptDraftEpoch by mutableLongStateOf(0L)
+        private set
+    internal var promptEditRevision by mutableLongStateOf(0L)
+        private set
+    internal val trackPromptEdits = InputTransformation {
+        if (changes.changeCount > 0 && !originalText.contentEquals(asCharSequence())) promptEditRevision++
+    }
+
     val settings = settingsStore.settingsFlow
 
     val draft: StateFlow<MediaCreationDraft> = draftState
@@ -231,6 +244,7 @@ class MediaCreationVM(
             }?.id
         val editingNodeId = session.draft.editingNodeId?.takeIf { repository.hasNode(it) }
         savedDraft = session.draft
+        promptDraftEpoch++
         draftState.value = session.draft.copy(modelId = modelId, assets = assets, editingNodeId = editingNodeId)
         promptState.setTextAndPlaceCursorAtEnd(session.draft.prompt)
     }
@@ -250,7 +264,7 @@ class MediaCreationVM(
     /** 清空提示词和素材，模型和参数保留。 */
     fun clearDraft() {
         promptState.clearText()
-        updateDraft { it.copy(prompt = "", assets = emptyList(), editingNodeId = null) }
+        updateDraft(replacePromptDraft = true) { it.copy(prompt = "", assets = emptyList(), editingNodeId = null) }
     }
 
     /** 不再修改原来那一项：输入区的内容保留，生成时另起一项。 */
@@ -425,9 +439,16 @@ class MediaCreationVM(
         return copy(assets = supported.takeLast(MAX_ASSETS))
     }
 
-    private fun updateDraft(transform: (MediaCreationDraft) -> MediaCreationDraft) {
+    private fun updateDraft(
+        replacePromptDraft: Boolean = false,
+        transform: (MediaCreationDraft) -> MediaCreationDraft,
+    ) {
         val draft = draftState.value ?: return
-        draftState.value = transform(draft)
+        val next = transform(draft)
+        if (replacePromptDraft || draft.editingNodeId != next.editingNodeId || draft.modelId != next.modelId) {
+            promptDraftEpoch++
+        }
+        draftState.value = next
     }
 
     private fun currentSelection(draft: MediaCreationDraft? = draftState.value): MediaCreationModelSelection? =
@@ -469,6 +490,7 @@ class MediaCreationVM(
             return
         }
         if (!submitted.canSubmit(selection.capabilities)) return
+        promptDraftEpoch++
         if (submitted.needsPlatformHistory(selection.capabilities)) {
             generateJob = viewModelScope.launch {
                 try {
@@ -579,7 +601,7 @@ class MediaCreationVM(
 
     /** 把一条记录的提示词、素材和参数填回输入区，之后生成的结果成为它所在那一项的新版本。 */
     fun editFrom(record: MediaCreationRecord) {
-        updateDraft { draft ->
+        updateDraft(replacePromptDraft = true) { draft ->
             val providers = settingsStore.settingsFlow.value.mediaGenerationProviders
             val model = providers.find { it.id == record.providerId }
                 ?.models?.find { it.modelId == record.modelId && it.kind == record.kind }

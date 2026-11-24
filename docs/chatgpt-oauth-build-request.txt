@@ -1,2 +1,2 @@
-205 / 3.3.0-personal.5
-2026-11-20 · Build with the existing fixed personal signer and publish to the in-app update feed.
+206 / 3.3.0-personal.6
+2026-11-24 · Deliver chat and image prompt enhancement with the existing personal signer and update feed.

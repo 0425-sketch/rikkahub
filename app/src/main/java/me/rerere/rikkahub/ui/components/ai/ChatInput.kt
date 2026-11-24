@@ -37,6 +37,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.Badge
@@ -96,6 +97,7 @@ import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Fullscreen
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.PromptEnhancementMode
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getQuickMessagesOfAssistant
@@ -299,6 +301,13 @@ fun ChatInput(
                                     .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
+                                PromptEnhancementButton(
+                                    mode = PromptEnhancementMode.CHAT,
+                                    textState = state.textContent,
+                                    draftEpoch = { state.draftEpoch },
+                                    editRevision = { state.editRevision },
+                                )
+
                                 // Model Picker
                                 ModelSelectorButton(
                                     state = modelListState,
@@ -619,6 +628,7 @@ private fun TextInputRow(
 
         TextField(
             state = state.textContent,
+            inputTransformation = state.trackTextEdits,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("chat_input")
@@ -671,6 +681,7 @@ private fun TextInputRow(
             FullScreenEditor(
                 textState = state.textContent,
                 placeholder = stringResource(R.string.chat_input_placeholder),
+                inputTransformation = state.trackTextEdits,
             ) {
                 isFullScreen = false
             }
@@ -759,7 +770,7 @@ private fun ChatInputState.applyCompletion(
     val textLength = textContent.text.length
     val start = replacementRange.min.coerceIn(0, textLength)
     val end = replacementRange.max.coerceIn(start, textLength)
-    textContent.edit {
+    editMessageText {
         replace(start, end, item.insertText)
         selection = TextRange(start + item.insertText.length)
     }
@@ -796,7 +807,7 @@ private fun QuickMessageButton(
                             },
                             onLongClick = {
                                 hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                                state.setMessageText(quickMessage.content)
+                                state.replaceDraftText(quickMessage.content)
                                 expanded = false
                             },
                         ),
@@ -827,6 +838,7 @@ private fun QuickMessageButton(
 private fun FullScreenEditor(
     textState: TextFieldState,
     placeholder: String,
+    inputTransformation: InputTransformation? = null,
     onDone: () -> Unit
 ) {
     BasicAlertDialog(
@@ -867,6 +879,7 @@ private fun FullScreenEditor(
                     }
                     TextField(
                         state = textState,
+                        inputTransformation = inputTransformation,
                         modifier = Modifier
                             .padding(bottom = 2.dp)
                             .fillMaxSize(),

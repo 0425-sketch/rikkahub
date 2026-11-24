@@ -26,6 +26,7 @@ enum class UsageSource {
     TITLE,
     SUGGESTION,
     TRANSLATION,
+    PROMPT_ENHANCEMENT,
     MEMORY,
     OCR,
 }
