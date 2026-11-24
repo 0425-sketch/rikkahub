@@ -1,6 +1,14 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 默认分支开发基线与最新签名版 · 205 / 3.3.0-personal.5（2026-11-20 UTC）
+## 默认分支开发基线与最新签名版 · 206 / 3.3.0-personal.6（2026-11-24 UTC）
+
+206 已发布。聊天与生图输入框左侧的星光按钮可以重写当前草稿，支持撤销。等待期间继续输入时可先预览增强稿。两个入口共用一个文本模型，并各自保存增强规则。OpenAI Platform 生图沿用同一入口。[使用说明和两份默认规则](prompt-enhancement.md) · [ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-812e754e7acb-45379233556-1/rikkahub-3.3.0-personal.6-812e754e7acb-arm64.apk) · [自用发布页](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-812e754e7acb-45379233556-1)
+
+用已发布的 205 源码中的更新器匿名访问线上渠道，已安装 205 时选中 206，已安装 206 时显示无更新。从更新器选中的地址实际下载了 61,408,517 字节，SHA-256 为 `6dddcaf8c72ed39a44492dc7814dd878c8e4755da1f6ea0d3bc6b5751b5abe67`。新旧 APK 均通过验签，包名为 `me.rerere.rikkahub.personal`，证书 SHA-256 为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`，架构为 ARM64，版本码从 205 增至 206，满足覆盖安装条件。实体手机安装、真实模型改写效果仍待体验。[公开构建证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-812e754e7acb-45379233556-1/build-provenance.json) · [双签名恢复证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-812e754e7acb-45379233556-1/signing-restoration-verification.json)
+
+发布源码为 `812e754e7acb08ac0fa9a62322f0a3a2bffa6d6e`。本地与 CI 均在这份源码上完成九模块回归，1,309 项通过、0 项失败、1 项因缺少可选的私人 DeepSeek 导出文件而跳过。54 项 Python 检查和 Android 仪器测试源码编译通过。首次候选构建遇过依赖下载限流和旧流式预览测试首帧空列表。最终候选让测试从一张可见卡片开始，在保留全部原断言的情况下通过回归；故意切断记录更新时仍能检出失败。两台独立构建机分别恢复主、备签名并制作 APK，发布作业成功。[发布源码](https://github.com/0425-sketch/rikkahub/commit/812e754e7acb08ac0fa9a62322f0a3a2bffa6d6e) · [构建运行](https://github.com/0425-sketch/rikkahub/actions/runs/45379233556) · [测试报告](https://github.com/0425-sketch/rikkahub/actions/runs/45379233556/artifacts/14914970078)
+
+## 已发布签名版 · 205 / 3.3.0-personal.5（2026-11-20 UTC）
 
 205 修复了可见图片卡片在保存阶段持续计时的问题。活动记录和可原地重试的记录按实际版本 ID 观察数据库，完成后直接更新同一张卡片。单张流式收到中间图时显示预览；完成记录分别显示请求数和实收数。选多张时关闭流式。SVG 编写模型可选填用户已在自己项目实测的 `gpt-6.2-sol`。[205 修复源码](https://github.com/0425-sketch/rikkahub/commit/a43df06c7ff8455360cdaa1bb8ed498a06302b38)
 
@@ -9,10 +17,6 @@
 本地和本次 CI 的九模块 JVM 测试均为 1,287 项通过、0 项失败、1 项跳过。唯一跳过的是需要私人 DeepSeek 导出归档的可选测试。54 项 Python 测试与 Android 仪器测试源码编译通过。模拟 Images API 的 Compose 测试在同一张可见卡片验证了中间预览、最终图自动显示和保存计时结束，也覆盖了未收到预览的情况。实体手机上的覆盖安装及实际 API 的流式显示仍待体验。[CI 测试报告](https://github.com/0425-sketch/rikkahub/actions/runs/44726648705/artifacts/14623934151)
 
 本次发布时，默认分支收到了两次符合路径规则的推送，均未创建运行记录。11:10 UTC，当前连接手工启动时返回 HTTP 422（`Actions has been disabled for this repository.`，请求编号 `9E36:160927:2BFAFED:8B8EF70:6B002A8F`）。仓库所有者页面显示允许 Actions，工作流为 `active`。所有者在同一签名工作流页面对 `custom-3.2.0` 点击 **Run workflow**，第 12 次运行成功完成。接口拒绝的具体原因未查明。后续遇到同样情况，先按提交核对实际运行记录，区分接口报错和仓库设置。[第 12 次构建](https://github.com/0425-sketch/rikkahub/actions/runs/44726648705)
-
-### 206 / 3.3.0-personal.6 · 提示词增强待发布
-
-聊天和媒体生图已接入草稿提示词增强。已递增自用版本号，按现有双签名恢复流程准备交付。[使用方法、两份默认规则与验证记录](prompt-enhancement.md)
 
 ## 已发布签名版 · 204 / 3.3.0-personal.4（2026-11-19 UTC）
 
