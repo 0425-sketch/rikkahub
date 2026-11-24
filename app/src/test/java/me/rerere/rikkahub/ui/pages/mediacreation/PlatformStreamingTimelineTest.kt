@@ -8,12 +8,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -24,7 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.mediagen.provider.MediaGenerationManager
@@ -123,8 +125,12 @@ class PlatformStreamingTimelineTest {
                 shadowOf(Looper.getMainLooper()).idle()
                 submitted.isCompleted
             }
-            // Hold the original page in place. A renderer which only consults the page will never show the final.
-            val page = flowOf(PagingData.from(listOf(MediaCreationNode(runBlocking { submitted.await() }))))
+            // LazyPagingItems initializes its first snapshot from a SharedFlow's replay cache. Mount
+            // the already-visible card without waiting for an unrelated asynchronous first-page load.
+            // Keep this PREPARING page frozen: every later status must come from the record observer.
+            val originalRecord = runBlocking { submitted.await() }
+            assertEquals(MediaCreationStatus.PREPARING, originalRecord.status)
+            val page = MutableStateFlow(PagingData.from(listOf(MediaCreationNode(originalRecord))))
             compose.setContent {
                 if (attached.value) MaterialTheme {
                     CompositionLocalProvider(LocalToaster provides rememberToasterState()) {
@@ -135,10 +141,17 @@ class PlatformStreamingTimelineTest {
             }
             val running = app.getString(R.string.media_creation_status_running)
             val saving = app.getString(R.string.media_creation_platform_status_saving)
-            waitForLabel(running)
             fun cardId() = compose.onNodeWithText(prompt, useUnmergedTree = true)
                 .assertIsDisplayed().fetchSemanticsNode().id
             val originalCard = cardId()
+            try {
+                waitForLabel(running)
+            } catch (t: ComposeTimeoutException) {
+                val row = runBlocking { repository.getRecord(originalRecord.id) }
+                throw AssertionError("${t.message}; record status=${row?.status}, error=${row?.error}\n" +
+                    compose.onRoot(useUnmergedTree = true).printToString(), t)
+            }
+            assertEquals(originalCard, cardId())
             writer.writeUtf8(event("partial_image", Color.MAGENTA)).flush()
             waitForPixels(Color.MAGENTA)
             assertEquals(originalCard, cardId())
@@ -170,6 +183,7 @@ class PlatformStreamingTimelineTest {
 
     private fun waitForLabel(label: String) {
         compose.waitUntil("visible status: $label", 20_000) {
+            shadowOf(Looper.getMainLooper()).idle()
             compose.onAllNodes(hasText(label, substring = true), useUnmergedTree = true).fetchSemanticsNodes().size == 1
         }
         compose.onNodeWithText(label, substring = true, useUnmergedTree = true).assertIsDisplayed()
@@ -177,6 +191,7 @@ class PlatformStreamingTimelineTest {
 
     private fun waitForPixels(color: Int) {
         compose.waitUntil("visible pixels #${color.toUInt().toString(16)}", 20_000) {
+            shadowOf(Looper.getMainLooper()).idle()
             val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
             var matches = 0
             for (x in 0 until bitmap.width step 8) {
