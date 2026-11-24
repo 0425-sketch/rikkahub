@@ -1,14 +1,20 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 默认分支开发基线与最新签名版 · 206 / 3.3.0-personal.6（2026-11-24 UTC）
+## 默认分支开发基线与最新签名版 · 207 / 3.3.0-personal.7（2026-11-24 UTC）
+
+207 已发布到自用更新渠道。聊天侧栏新增独立增强窗口，支持粘贴、一键增强、复制完整结果。聊天和生图可各选思考档位，聊天框和侧栏共用聊天配置。两份英文默认规则随升级生效，与 206 旧默认不同的自定义文字会保留。[使用说明与规则原文](prompt-enhancement.md) · [ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-2889fead7c6c-45420434321-1/rikkahub-3.3.0-personal.7-2889fead7c6c-arm64.apk) · [发布页](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-2889fead7c6c-45420434321-1)
+
+已从 206 发布源码独立编译更新器，匿名读取线上渠道。已安装 206 时选中 207，已安装 207 时显示无更新。由更新器选中的公开地址下载的安装包为 61,441,577 字节，SHA-256 为 `8d351216df44111de7195a530655a301f75c785770eb72e77187e28e27ad38e3`。两版包名均为 `me.rerere.rikkahub.personal`，签名证书 SHA-256 均为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`，版本码从 206 增至 207，符合覆盖安装条件。两台独立构建机分别恢复并验证固定签名。[构建证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-2889fead7c6c-45420434321-1/build-provenance.json) · [签名恢复证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-2889fead7c6c-45420434321-1/signing-restoration-verification.json)
+
+发布源码为 `2889fead7c6c201e255a74539471441cc325a20d`。本地与 CI 的九模块测试均为 1,320 项通过，0 项失败，1 项因缺少可选的私人 DeepSeek 导出文件而跳过。54 项 Python 检查及 Android 仪器测试源码编译均通过。已从公开 APK 内部核对聊天、生图默认规则与提供的英文原文逐字节相符，并确认中文「一键增强」「一键复制」按钮文案。实体手机覆盖安装、跨 App 剪贴板和真实模型改写效果仍待体验。[源码](https://github.com/0425-sketch/rikkahub/commit/2889fead7c6c201e255a74539471441cc325a20d) · [构建运行](https://github.com/0425-sketch/rikkahub/actions/runs/45420434321) · [CI 测试报告](https://github.com/0425-sketch/rikkahub/actions/runs/45420434321/artifacts/14935226151)
+
+## 已发布签名版 · 206 / 3.3.0-personal.6（2026-11-24 UTC）
 
 206 已发布。聊天与生图输入框左侧的星光按钮可以重写当前草稿，支持撤销。等待期间继续输入时可先预览增强稿。两个入口共用一个文本模型，并各自保存增强规则。OpenAI Platform 生图沿用同一入口。[206 使用说明和当时的默认规则](https://github.com/0425-sketch/rikkahub/blob/812e754e7acb08ac0fa9a62322f0a3a2bffa6d6e/docs/prompt-enhancement.md) · [ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-812e754e7acb-45379233556-1/rikkahub-3.3.0-personal.6-812e754e7acb-arm64.apk) · [自用发布页](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-812e754e7acb-45379233556-1)
 
 用已发布的 205 源码中的更新器匿名访问线上渠道，已安装 205 时选中 206，已安装 206 时显示无更新。从更新器选中的地址实际下载了 61,408,517 字节，SHA-256 为 `6dddcaf8c72ed39a44492dc7814dd878c8e4755da1f6ea0d3bc6b5751b5abe67`。新旧 APK 均通过验签，包名为 `me.rerere.rikkahub.personal`，证书 SHA-256 为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`，架构为 ARM64，版本码从 205 增至 206，满足覆盖安装条件。实体手机安装、真实模型改写效果仍待体验。[公开构建证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-812e754e7acb-45379233556-1/build-provenance.json) · [双签名恢复证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-812e754e7acb-45379233556-1/signing-restoration-verification.json)
 
 发布源码为 `812e754e7acb08ac0fa9a62322f0a3a2bffa6d6e`。本地与 CI 均在这份源码上完成九模块回归，1,309 项通过、0 项失败、1 项因缺少可选的私人 DeepSeek 导出文件而跳过。54 项 Python 检查和 Android 仪器测试源码编译通过。首次候选构建遇过依赖下载限流和旧流式预览测试首帧空列表。最终候选让测试从一张可见卡片开始，在保留全部原断言的情况下通过回归；故意切断记录更新时仍能检出失败。两台独立构建机分别恢复主、备签名并制作 APK，发布作业成功。[发布源码](https://github.com/0425-sketch/rikkahub/commit/812e754e7acb08ac0fa9a62322f0a3a2bffa6d6e) · [构建运行](https://github.com/0425-sketch/rikkahub/actions/runs/45379233556) · [测试报告](https://github.com/0425-sketch/rikkahub/actions/runs/45379233556/artifacts/14914970078)
-
-**207 / 3.3.0-personal.7 发布候选**　提示词增强已接入新版英文默认规则、聊天和生图各自的思考档位，以及聊天侧栏的独立增强窗口。[使用方法、内置规则和本地验证](prompt-enhancement.md)
 
 ## 已发布签名版 · 205 / 3.3.0-personal.5（2026-11-20 UTC）
 
