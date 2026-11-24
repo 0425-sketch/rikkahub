@@ -45,6 +45,12 @@ private fun <T : Any> plain(
     set: Settings.(T) -> Settings,
 ) = SettingsField(key, property, set, encode = { it }, decode = { it })
 
+private fun optionalInt(
+    key: Preferences.Key<Int>,
+    property: KProperty1<Settings, Int?>,
+    set: Settings.(Int?) -> Settings,
+) = SettingsField(key, property, set, encode = { it }, decode = { it })
+
 /** 存成 JSON 字符串。 */
 private inline fun <reified T> json(
     key: Preferences.Key<String>,
@@ -133,6 +139,12 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         ),
         plain(CHAT_ENHANCEMENT_PROMPT, Settings::chatEnhancementPrompt) { copy(chatEnhancementPrompt = it) },
         plain(IMAGE_ENHANCEMENT_PROMPT, Settings::imageEnhancementPrompt) { copy(imageEnhancementPrompt = it) },
+        optionalInt(CHAT_ENHANCEMENT_THINKING_BUDGET, Settings::chatEnhancementThinkingBudget) {
+            copy(chatEnhancementThinkingBudget = it)
+        },
+        optionalInt(IMAGE_ENHANCEMENT_THINKING_BUDGET, Settings::imageEnhancementThinkingBudget) {
+            copy(imageEnhancementThinkingBudget = it)
+        },
 
         // 自动压缩
         plain(ENABLE_AUTO_COMPRESS, Settings::enableAutoCompress) { copy(enableAutoCompress = it) },

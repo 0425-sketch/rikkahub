@@ -18,6 +18,7 @@ import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.providers.chatgpt.ChatGPTProvider
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.ai.transformers.ocrGenerationParams
+import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.ui.pages.setting.components.connectionTestRequest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -82,7 +83,39 @@ class AuxiliaryRequestConfigurationTest {
         }
     }
 
-    private suspend fun captureBody(params: TextGenerationParams): JsonObject {
+    @Test
+    fun `enhancement sends its mode-specific SIWC effort and omits effort for the 206 defaults`() = runBlocking {
+        // This model is routed through ChatGPT and advertises efforts through its account catalog.
+        val selected = model.copy(providerOverwrite = chatGPT, abilities = emptyList())
+        val settings = Settings(
+            promptEnhancementModelId = selected.id,
+            providers = listOf(ProviderSetting.OpenAI(models = listOf(selected))),
+        )
+        suspend fun effort(current: Settings, mode: PromptEnhancementMode): String? {
+            val body = captureBody { client, account ->
+                val result = enhancePrompt(current, mode, "草稿") { setting, messages, params ->
+                    assertEquals(account.id, setting.id)
+                    client.generateText(account, messages, params)
+                }
+                assertEquals("ok", result)
+            }
+            return body["reasoning"]?.jsonObject?.get("effort")?.jsonPrimitive?.content
+        }
+        assertNull(effort(settings, PromptEnhancementMode.CHAT))
+        assertNull(effort(settings, PromptEnhancementMode.IMAGE))
+        val explicit = settings.copy(
+            chatEnhancementThinkingBudget = ReasoningLevel.HIGH.budgetTokens,
+            imageEnhancementThinkingBudget = ReasoningLevel.XHIGH.budgetTokens,
+        )
+        assertEquals("high", effort(explicit, PromptEnhancementMode.CHAT))
+        assertEquals("xhigh", effort(explicit, PromptEnhancementMode.IMAGE))
+    }
+
+    private suspend fun captureBody(params: TextGenerationParams): JsonObject = captureBody { client, account ->
+        client.generateText(account, listOf(UIMessage.user("Auxiliary request")), params)
+    }
+
+    private suspend fun captureBody(request: suspend (ChatGPTProvider, ProviderSetting.ChatGPT) -> Unit): JsonObject {
         var captured: JsonObject? = null
         val client = OkHttpClient.Builder().addInterceptor { chain ->
             val request = chain.request()
@@ -104,9 +137,7 @@ class AuxiliaryRequestConfigurationTest {
             grantedScopes = setOf("chatgpt.tokens.use.direct"),
         )
         try {
-            ChatGPTProvider(client) { _, _ -> credential }.generateText(
-                chatGPT.copy(credential = credential), listOf(UIMessage.user("Auxiliary request")), params,
-            )
+            request(ChatGPTProvider(client) { _, _ -> credential }, chatGPT.copy(credential = credential))
             return checkNotNull(captured).also {
                 assertEquals("true", it.getValue("stream").jsonPrimitive.content)
                 assertEquals("false", it.getValue("store").jsonPrimitive.content)

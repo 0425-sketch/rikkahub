@@ -79,6 +79,8 @@ class SettingsFieldsTest {
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(null, settings.memoryModelId)
         assertEquals(null, settings.promptEnhancementModelId)
+        assertEquals(null, settings.chatEnhancementThinkingBudget)
+        assertEquals(null, settings.imageEnhancementThinkingBudget)
         assertEquals(DEFAULT_CHAT_ENHANCEMENT_PROMPT, settings.chatEnhancementPrompt)
         assertEquals(DEFAULT_IMAGE_ENHANCEMENT_PROMPT, settings.imageEnhancementPrompt)
         assertEquals(true, settings.dynamicColor)
@@ -163,6 +165,8 @@ private val SAMPLE = Settings(
     ocrModelId = id(5),
     ocrPrompt = "ocr",
     promptEnhancementModelId = id(40),
+    chatEnhancementThinkingBudget = ReasoningLevel.OFF.budgetTokens,
+    imageEnhancementThinkingBudget = ReasoningLevel.AUTO.budgetTokens,
     chatEnhancementPrompt = "chat rule\nwith new line",
     imageEnhancementPrompt = "image rule",
     enableAutoCompress = false,
@@ -229,6 +233,8 @@ private val STORED_KEYS = setOf(
     "prompt_enhancement_model",
     "chat_enhancement_prompt",
     "image_enhancement_prompt",
+    "chat_enhancement_thinking_budget",
+    "image_enhancement_thinking_budget",
     "enable_auto_compress",
     "auto_compress_threshold",
     "providers",

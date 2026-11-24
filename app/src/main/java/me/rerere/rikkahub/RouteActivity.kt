@@ -92,6 +92,7 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.AssistantRequestPage
 import me.rerere.rikkahub.ui.pages.backup.BackupPage
 import me.rerere.rikkahub.ui.pages.chat.ChatPage
 import me.rerere.rikkahub.ui.pages.debug.DebugPage
+import me.rerere.rikkahub.ui.pages.enhancement.PromptEnhancementPage
 import me.rerere.rikkahub.ui.pages.extensions.ExtensionsPage
 import me.rerere.rikkahub.ui.pages.extensions.PromptPage
 import me.rerere.rikkahub.ui.pages.extensions.QuickMessagesPage
@@ -433,6 +434,10 @@ class RouteActivity : ComponentActivity() {
                                 TranslatorPage()
                             }
 
+                            entry<Screen.PromptEnhancement> {
+                                PromptEnhancementPage()
+                            }
+
                             entry<Screen.Setting> {
                                 SettingPage()
                             }
@@ -712,6 +717,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Translator : Screen
+
+    @Serializable
+    data object PromptEnhancement : Screen
 
     @Serializable
     data object Setting : Screen

@@ -1,3 +1,3 @@
-206 / 3.3.0-personal.6
-2026-11-24 · Deliver chat and image prompt enhancement with the existing personal signer and update feed.
-Keep the original preview, completed-image and timing checks on a visible, fixed test page.
+207 / 3.3.0-personal.7
+2026-11-24 · Deliver separate chat and image enhancement reasoning levels, verbatim English defaults, and the standalone chat prompt enhancer.
+Use the existing fixed personal signer and update channel for upgrades from 206.

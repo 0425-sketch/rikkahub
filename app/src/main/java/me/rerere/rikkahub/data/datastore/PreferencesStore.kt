@@ -41,6 +41,7 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
+import me.rerere.rikkahub.data.datastore.migration.PromptEnhancementDefaultsMigration
 import me.rerere.rikkahub.data.model.Assistant
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
@@ -81,6 +82,7 @@ private fun createSettingsDataStore(context: Context): DataStore<Preferences> {
             PreferenceStoreV3Migration(),
             PreferenceStoreV4Migration(),
             PreferenceStoreV5Migration(),
+            PromptEnhancementDefaultsMigration,
         ),
         produceFile = { file },
     )
@@ -133,6 +135,8 @@ class SettingsStore internal constructor(
         val PROMPT_ENHANCEMENT_MODEL = stringPreferencesKey("prompt_enhancement_model")
         val CHAT_ENHANCEMENT_PROMPT = stringPreferencesKey("chat_enhancement_prompt")
         val IMAGE_ENHANCEMENT_PROMPT = stringPreferencesKey("image_enhancement_prompt")
+        val CHAT_ENHANCEMENT_THINKING_BUDGET = intPreferencesKey("chat_enhancement_thinking_budget")
+        val IMAGE_ENHANCEMENT_THINKING_BUDGET = intPreferencesKey("image_enhancement_thinking_budget")
 
         // 自动压缩
         val ENABLE_AUTO_COMPRESS = booleanPreferencesKey("enable_auto_compress")

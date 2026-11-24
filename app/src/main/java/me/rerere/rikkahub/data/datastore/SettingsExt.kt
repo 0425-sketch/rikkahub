@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.datastore
 
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
@@ -14,6 +15,9 @@ fun Settings.isNotConfigured() = providers.all { it.models.isEmpty() }
 
 internal fun Model.supportsPromptEnhancement(): Boolean =
     type == ModelType.CHAT && Modality.TEXT in inputModalities && Modality.TEXT in outputModalities
+
+internal fun Model.supportsEnhancementReasoning(provider: ProviderSetting): Boolean =
+    ModelAbility.REASONING in abilities || (providerOverwrite ?: provider) is ProviderSetting.ChatGPT
 
 /**
  * 按 ID 查找模型。

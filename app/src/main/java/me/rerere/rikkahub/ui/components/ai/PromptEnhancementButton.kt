@@ -39,6 +39,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.EmptyPromptEnhancementResult
 import me.rerere.rikkahub.data.ai.PromptEnhancementMode
 import me.rerere.rikkahub.data.ai.PromptEnhancementModelUnavailable
+import me.rerere.rikkahub.data.ai.PromptEnhancementReasoningUnavailable
 import me.rerere.rikkahub.data.ai.UsageRecorder
 import me.rerere.rikkahub.data.ai.enhancePrompt
 import me.rerere.rikkahub.ui.context.LocalSettings
@@ -46,6 +47,13 @@ import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.ui.components.Tooltip
 import me.rerere.ui.toast.ToastType
 import org.koin.compose.koinInject
+
+internal fun Exception.promptEnhancementErrorMessage() = when (this) {
+    is PromptEnhancementModelUnavailable -> R.string.prompt_enhancement_select_model
+    is PromptEnhancementReasoningUnavailable -> R.string.prompt_enhancement_unsupported_reasoning
+    is EmptyPromptEnhancementResult -> R.string.prompt_enhancement_empty
+    else -> R.string.prompt_enhancement_failed
+}
 
 // All editor reads and writes take place on the UI thread. Check the live owner and
 // revision again at each write, even when Compose has yet to redraw the controls.
@@ -148,12 +156,7 @@ internal fun PromptEnhancementButton(
                                 } catch (e: Exception) {
                                     currentCoroutineContext().ensureActive()
                                     if (editor.isCurrent) {
-                                        val message = when (e) {
-                                            is PromptEnhancementModelUnavailable -> R.string.prompt_enhancement_select_model
-                                            is EmptyPromptEnhancementResult -> R.string.prompt_enhancement_empty
-                                            else -> R.string.prompt_enhancement_failed
-                                        }
-                                        toaster.show(context.getString(message), ToastType.Error)
+                                        toaster.show(context.getString(e.promptEnhancementErrorMessage()), ToastType.Error)
                                     }
                                 }
                             }

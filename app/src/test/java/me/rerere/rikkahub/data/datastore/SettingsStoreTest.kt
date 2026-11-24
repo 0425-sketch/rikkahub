@@ -22,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_CHAT_ENHANCEMENT_PROMPT
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_IMAGE_ENHANCEMENT_PROMPT
 import me.rerere.rikkahub.data.model.Lorebook
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.providers.chatgpt.CacheDiagnosticMode
 import me.rerere.ai.provider.providers.chatgpt.ChatGPTCacheDiagnostics
 import me.rerere.common.android.Logging
@@ -121,6 +122,30 @@ class SettingsStoreTest {
         assertEquals(chat, resetImage.chatEnhancementPrompt)
         assertEquals(DEFAULT_IMAGE_ENHANCEMENT_PROMPT, resetImage.imageEnhancementPrompt)
         assertEquals(null, resetImage.promptEnhancementModelId)
+    }
+
+    @Test
+    fun `enhancement budgets load independently and distinguish unset from off and auto`() = runBlocking {
+        val store = open().store
+        assertEquals(null, store.awaitLoaded().chatEnhancementThinkingBudget)
+        assertEquals(null, store.awaitLoaded().imageEnhancementThinkingBudget)
+        store.update { it.copy(chatEnhancementThinkingBudget = ReasoningLevel.OFF.budgetTokens) }
+
+        val restarted = open().store
+        val restored = restarted.awaitLoaded()
+        assertEquals(0, restored.chatEnhancementThinkingBudget)
+        assertEquals(null, restored.imageEnhancementThinkingBudget)
+        restarted.update { it.copy(imageEnhancementThinkingBudget = ReasoningLevel.AUTO.budgetTokens) }
+
+        val updated = open().store
+        val both = updated.awaitLoaded()
+        assertEquals(0, both.chatEnhancementThinkingBudget)
+        assertEquals(-1, both.imageEnhancementThinkingBudget)
+        updated.update { it.copy(chatEnhancementThinkingBudget = null) }
+
+        val cleared = reopened()
+        assertEquals(null, cleared.chatEnhancementThinkingBudget)
+        assertEquals(-1, cleared.imageEnhancementThinkingBudget)
     }
 
     @Test

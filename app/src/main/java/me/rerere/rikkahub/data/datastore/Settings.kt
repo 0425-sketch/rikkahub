@@ -66,6 +66,8 @@ data class Settings(
     val promptEnhancementModelId: Uuid? = null,
     val chatEnhancementPrompt: String = DEFAULT_CHAT_ENHANCEMENT_PROMPT,
     val imageEnhancementPrompt: String = DEFAULT_IMAGE_ENHANCEMENT_PROMPT,
+    val chatEnhancementThinkingBudget: Int? = null,
+    val imageEnhancementThinkingBudget: Int? = null,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = DEFAULT_PROVIDERS,
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,

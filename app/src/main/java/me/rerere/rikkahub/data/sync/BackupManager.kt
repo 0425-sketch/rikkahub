@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
@@ -19,6 +20,8 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.withoutChatGPTCredentials
 import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
+import me.rerere.rikkahub.data.datastore.migration.ENHANCEMENT_DEFAULTS_MIGRATED
+import me.rerere.rikkahub.data.datastore.migration.migrateEnhancementDefaults
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.SQLiteConfiguration
@@ -154,7 +157,7 @@ class BackupManager internal constructor(
                     if (settingsFile.exists()) {
                         val migrated = SettingsJsonMigrator.migrate(settingsFile.readText())
                         val settings = try {
-                            json.decodeFromString<Settings>(migrated)
+                            json.decodeBackupSettings(migrated)
                         } catch (_: IllegalArgumentException) {
                             // Decoder errors can echo the archived token values from older backups.
                             throw IllegalArgumentException("Backup settings could not be decoded")
@@ -199,11 +202,16 @@ class BackupManager internal constructor(
         // 启动次数不在 Settings 里，备份文件里仍放在 settings.json 的这个字段，和旧备份保持一致
         private const val LAUNCH_COUNT_KEY = "launchCount"
 
-        private fun Json.encodeSettings(settings: Settings, launchCount: Int): String {
-            val fields = encodeToJsonElement(settings.withoutChatGPTCredentials()).jsonObject +
-                (LAUNCH_COUNT_KEY to JsonPrimitive(launchCount))
+        internal fun Json.encodeSettings(settings: Settings, launchCount: Int): String {
+            val fields = encodeToJsonElement(settings.withoutChatGPTCredentials()).jsonObject + mapOf(
+                LAUNCH_COUNT_KEY to JsonPrimitive(launchCount),
+                ENHANCEMENT_DEFAULTS_MIGRATED to JsonPrimitive(true),
+            )
             return encodeToString(JsonObject(fields))
         }
+
+        internal fun Json.decodeBackupSettings(settingsJson: String): Settings =
+            decodeFromJsonElement(parseToJsonElement(settingsJson).jsonObject.migrateEnhancementDefaults())
 
         // 更早的备份没有这个字段，按 0 恢复，和它还在 Settings 里时的默认值一致
         private fun Json.launchCountOf(settingsJson: String): Int =
@@ -220,7 +228,7 @@ class BackupManager internal constructor(
             pendingRestore(context).apply { settingsJson ->
                 SettingsStore.restoreBeforeInitialization(
                     context = context,
-                    settings = json.decodeFromString<Settings>(settingsJson).withoutChatGPTCredentials(),
+                    settings = json.decodeBackupSettings(settingsJson).withoutChatGPTCredentials(),
                     launchCount = json.launchCountOf(settingsJson),
                 )
             }

@@ -762,6 +762,11 @@ private fun DrawerActions(navController: Navigator) {
             text = stringResource(R.string.chat_page_menu_ai_translator),
             onClick = { navController.navigate(Screen.Translator) },
         )
+        DrawerEntry(
+            icon = HugeIcons.Sparkles,
+            text = stringResource(R.string.prompt_enhancement_page_title),
+            onClick = { navController.navigate(Screen.PromptEnhancement) },
+        )
     }
 }
 

@@ -1953,10 +1953,18 @@
   <string name="prompt_enhancement_keep">Keep my draft</string>
   <string name="prompt_enhancement_select_model">Choose a text model in Settings → Default models and prompts → Prompt enhancement model.</string>
   <string name="prompt_enhancement_empty">The model returned no text. Your draft was kept.</string>
+  <string name="prompt_enhancement_unsupported_reasoning">The selected model does not support the saved thinking level. Choose a supported level in Settings → Default models and prompts → Prompts.</string>
   <string name="prompt_enhancement_failed">Could not enhance the draft. Check the model or connection and try again.</string>
   <string name="setting_model_page_enhancement_model">Prompt enhancement model</string>
   <string name="setting_model_page_enhancement_model_desc">Rewrites chat and image drafts. Edit each rule in the Prompts tab.</string>
   <string name="setting_model_page_prompt_chat_enhancement">Chat prompt enhancement</string>
   <string name="setting_model_page_prompt_image_enhancement">Image prompt enhancement</string>
   <string name="setting_model_page_prompt_enhancement_hint">Changes save automatically. The model receives these instructions along with the current draft. Leave blank to use the default rule.</string>
+  <string name="prompt_enhancement_page_title">Chat prompt enhancement</string>
+  <string name="prompt_enhancement_page_source">Original text</string>
+  <string name="prompt_enhancement_page_result">Enhanced prompt</string>
+  <string name="prompt_enhancement_page_copy">Copy result</string>
+  <string name="setting_model_page_enhancement_budget_default">Use model default</string>
+  <string name="setting_model_page_enhancement_budget_unavailable">This model does not support a configurable reasoning budget.</string>
+  <string name="prompt_enhancement_page_run">Enhance</string>
 </resources>

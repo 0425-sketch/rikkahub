@@ -3,10 +3,13 @@ package me.rerere.rikkahub.data.ai
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.BuiltInTools
+import me.rerere.ai.provider.ChatGPTModelCapabilities
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationResult
@@ -50,6 +53,9 @@ class PromptEnhancementTest {
                 assertEquals(route.id, provider.id)
                 assertEquals(model.id, params.model.id)
                 assertEquals(model.customHeaders, params.customHeaders)
+                // Without an explicit setting the full request configuration stays on the 206 background defaults.
+                val textModel = model.copy(tools = emptySet(), outputModalities = listOf(Modality.TEXT))
+                assertEquals(backgroundTextGenerationParams(textModel, Uuid.parse(checkNotNull(params.sessionId))), params)
                 assertTrue(params.tools.isEmpty())
                 assertTrue(params.model.tools.isEmpty())
                 assertEquals(listOf(Modality.TEXT), params.model.outputModalities)
@@ -63,6 +69,48 @@ class PromptEnhancementTest {
             assertEquals("草稿一\n草稿二", enhanced)
         }
         assertEquals(setOf(BuiltInTools.Search, BuiltInTools.ImageGeneration), model.tools)
+    }
+
+    @Test
+    fun `plain models ignore stored efforts while reasoning models reuse the two choices`() = runBlocking {
+        val explicit = settings.copy(
+            chatEnhancementThinkingBudget = ReasoningLevel.OFF.budgetTokens,
+            imageEnhancementThinkingBudget = ReasoningLevel.MEDIUM.budgetTokens,
+        )
+        suspend fun levels(current: Settings) = PromptEnhancementMode.entries.map { mode ->
+            var level: ReasoningLevel? = null
+            enhancePrompt(current, mode, draft) { _, _, params ->
+                level = params.reasoningLevel
+                reply(UIMessagePart.Text("草稿"))
+            }
+            checkNotNull(level)
+        }
+        assertEquals(listOf(ReasoningLevel.AUTO, ReasoningLevel.AUTO), levels(explicit))
+        val reasoningModel = model.copy(abilities = listOf(ModelAbility.REASONING))
+        assertEquals(
+            listOf(ReasoningLevel.OFF, ReasoningLevel.MEDIUM),
+            levels(explicit.copy(providers = listOf(owner.copy(models = listOf(reasoningModel))))),
+        )
+    }
+
+    @Test
+    fun `a saved level missing from the selected SIWC catalog is reported before making a request`() {
+        val restricted = model.copy(
+            providerOverwrite = ProviderSetting.ChatGPT(),
+            chatGPTCapabilities = ChatGPTModelCapabilities(reasoningEfforts = listOf("high")),
+        )
+        val current = settings.copy(
+            providers = listOf(owner.copy(models = listOf(restricted))),
+            chatEnhancementThinkingBudget = ReasoningLevel.OFF.budgetTokens,
+            imageEnhancementThinkingBudget = ReasoningLevel.MAX.budgetTokens,
+        )
+        for (mode in PromptEnhancementMode.entries) {
+            assertThrows(PromptEnhancementReasoningUnavailable::class.java) {
+                runBlocking {
+                    enhancePrompt(current, mode, draft) { _, _, _ -> error("unexpected request") }
+                }
+            }
+        }
     }
 
     @Test

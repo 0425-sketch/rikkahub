@@ -115,7 +115,7 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
 
                     ModelSettingTab.PROMPT -> PromptSettingsPage(
                         settings = settings,
-                        vm = vm,
+                        updateSettings = vm::updateSettings,
                         contentPadding = contentPadding,
                     )
                 }
