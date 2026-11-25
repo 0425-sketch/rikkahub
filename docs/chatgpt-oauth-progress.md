@@ -1,6 +1,14 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
-## 默认分支开发基线与最新签名版 · 207 / 3.3.0-personal.7（2026-11-24 UTC）
+## 默认分支开发基线与最新签名版 · 208 / 3.3.0-personal.8（2026-11-25 UTC）
+
+208 已发布到自用更新渠道，修复「参考历史聊天记录」跨助手返回聊天片段的问题。普通助手只能检索自己的会话，即使两个助手共享记忆库也一样。旧会话的原助手缺失时，接手的助手可以继续聊天，但不能在该会话中调用历史检索工具。用户主动选择「所有助手」仍可搜索全部会话，后台记忆整理仍按记忆库范围读取。[ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-ee3edfe6cc1d-45535258015-1/rikkahub-3.3.0-personal.8-ee3edfe6cc1d-arm64.apk) · [发布页](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-ee3edfe6cc1d-45535258015-1)
+
+从 207 发布源码独立运行更新器，匿名访问线上渠道，已安装 207 时选中 208，已安装 208 时显示无更新。从更新器给出的地址下载并验签，新包大小为 61,441,305 字节，SHA-256 为 `9c69296303ca92cbe6fc36f47ebb14e2cde49538f2f7e314ea782694e868bb82`。两版包名均为 `me.rerere.rikkahub.personal`，签名证书 SHA-256 均为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`，版本码从 207 增至 208。两台独立构建机分别从主、备签名恢复并构建成功。[构建证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-ee3edfe6cc1d-45535258015-1/build-provenance.json) · [签名恢复证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-ee3edfe6cc1d-45535258015-1/signing-restoration-verification.json)
+
+发布源码为 `ee3edfe6cc1dd902b3312aa36a07a4f5bb218946`。本地和 CI 九模块各 1,320 项测试通过，0 项失败，1 项因缺少可选的私人 DeepSeek 导出样本跳过，54 项 Python 检查均通过。历史工具在宿主机上对照相同的 31 项断言，207 有 10 项失败，208 全部通过。新增 5 个场景在 Robolectric 宿主适配下通过，Android 仪器测试源码编译通过。实体手机覆盖安装和设备上的仪器测试未执行。[源码](https://github.com/0425-sketch/rikkahub/commit/ee3edfe6cc1dd902b3312aa36a07a4f5bb218946) · [构建运行](https://github.com/0425-sketch/rikkahub/actions/runs/45535258015) · [CI 测试报告](https://github.com/0425-sketch/rikkahub/actions/runs/45535258015/artifacts/14986124363)
+
+## 已发布签名版 · 207 / 3.3.0-personal.7（2026-11-24 UTC）
 
 207 已发布到自用更新渠道。聊天侧栏新增独立增强窗口，支持粘贴、一键增强、复制完整结果。聊天和生图可各选思考档位，聊天框和侧栏共用聊天配置。两份英文默认规则随升级生效，与 206 旧默认不同的自定义文字会保留。[使用说明与规则原文](prompt-enhancement.md) · [ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-2889fead7c6c-45420434321-1/rikkahub-3.3.0-personal.7-2889fead7c6c-arm64.apk) · [发布页](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-2889fead7c6c-45420434321-1)
 
