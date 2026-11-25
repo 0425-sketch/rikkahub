@@ -120,8 +120,7 @@ class ChatRequestFactory(
                 settings = settings,
                 assistant = assistant,
                 model = model,
-                conversationId = conversation.id,
-                workspaceCwd = conversation.workspaceCwd,
+                conversation = conversation,
             ).forStableChatGPTPrefix(provider),
         )
     }

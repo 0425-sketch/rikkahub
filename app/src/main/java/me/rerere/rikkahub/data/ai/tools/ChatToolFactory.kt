@@ -14,6 +14,7 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
@@ -53,11 +54,10 @@ class ChatToolFactory(
         settings: Settings,
         assistant: Assistant,
         model: Model,
-        conversationId: Uuid,
-        workspaceCwd: String? = null,
+        conversation: Conversation,
     ): List<Tool> {
         val workspaceTools =
-            createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, conversationId)
+            createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), conversation.workspaceCwd, conversation.id)
         val tools = buildList {
             if (assistant.enableMemory) {
                 addAll(buildMemoryTools(memoryRepository, assistant.memoryId))
@@ -66,7 +66,8 @@ class ChatToolFactory(
                 addAll(createSearchTools(settings))
             }
             addAll(localTools.getTools(assistant.localTools))
-            if (assistant.enableRecentChatsReference) {
+            // 旧会话找不到所属助手时会回退到当前助手，历史记录仍须隔离。
+            if (assistant.enableRecentChatsReference && assistant.id == conversation.assistantId) {
                 addAll(createConversationTools(conversationRepository, assistant.id))
             }
             addAll(workspaceTools)

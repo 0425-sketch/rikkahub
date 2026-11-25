@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 207
-VERSION_NAME = "3.3.0-personal.7"
+VERSION_CODE = 208
+VERSION_NAME = "3.3.0-personal.8"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 
@@ -217,10 +217,9 @@ def main():
     notes = args.output / "release-notes.txt"
     notes.write_text(
         f"RikkaHub {VERSION_NAME}\n\n"
-        "聊天主页打开左上角菜单，点「聊天提示词增强」，即可粘贴原文、一键增强、一键复制。原文和结果分开显示，内容不会加入聊天记录。\n\n"
-        "在「设置 → 默认模型和提示词 → 提示词」可给聊天增强和生图增强分别选思考档位。聊天输入框和独立窗口共用聊天档位，生图页（含 OpenAI Platform）使用生图档位。\n\n"
-        "两份默认规则已换为新版英文原文。从 206 升级时，与旧默认不同的自定义文字会保留。未选思考档位时沿用原有请求行为。\n\n"
-        "已安装自用版 206 的用户可从聊天侧栏下载本次更新，再按 Android 提示覆盖安装。\n\n"
+        "修复「参考历史聊天记录」跨助手返回聊天片段的问题。现在每个助手只能检索自己的聊天记录，开启全局记忆也遵守这一范围。\n\n"
+        "旧会话找不到原助手时，接手的助手仍可继续聊天，但无法在该会话中调取自己的历史。用户主动选择「所有助手」仍可全局搜索，后台记忆整理继续按记忆库范围工作。\n\n"
+        "已安装自用版 207 的用户可从聊天侧栏下载本次更新，再按 Android 提示覆盖安装。\n\n"
         f"[构建源码](https://github.com/{REPO}/commit/{source_sha}) · [构建记录]({metadata['actions_url']})\n\n"
         f"APK SHA-256 `{metadata['apk_sha256']}`\n\n"
         f"<!-- rikkahub-personal-version-code: {VERSION_CODE} -->\n",
