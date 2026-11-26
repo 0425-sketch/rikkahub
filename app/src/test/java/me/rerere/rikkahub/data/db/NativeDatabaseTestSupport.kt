@@ -119,14 +119,16 @@ internal fun nativeRoom(context: Context, name: String = SQLiteConfiguration.DAT
     AppDatabaseFactory.create(context, name, FrameworkSQLiteOpenHelperFactory(), initializeSearch = {})
 
 /** Equivalent integrity/checkpoint boundary on Robolectric's AOSP native SQLite implementation. */
-internal fun normalizeNativeDatabase(@Suppress("UNUSED_PARAMETER") context: Context, file: File) {
-    SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+internal fun normalizeNativeDatabase(@Suppress("UNUSED_PARAMETER") context: Context, file: File): Int {
+    val version = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
         db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use {
             check(it.moveToFirst() && it.getInt(0) == 0)
         }
         db.rawQuery("PRAGMA integrity_check", null).use {
             check(it.moveToFirst() && it.getString(0) == "ok" && !it.moveToNext())
         }
+        db.version
     }
     DatabaseBackup.removeSidecars(file)
+    return version
 }

@@ -258,7 +258,7 @@ val dataSourceModule = module {
         ProviderManager(client = get(), context = get(), accountCredentials = get<ProviderAccountManager>())
     }
 
-    single { BackupManager(context = get(), database = get(), settingsStore = get(), json = get()) }
+    single { BackupManager(context = get(), database = { get() }, settingsStore = get(), json = get()) }
 
     single {
         WebDavSync(

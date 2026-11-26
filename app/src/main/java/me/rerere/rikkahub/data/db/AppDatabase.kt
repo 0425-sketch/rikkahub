@@ -38,6 +38,8 @@ import me.rerere.rikkahub.data.db.migrations.Migration_28_29
 import me.rerere.rikkahub.data.db.migrations.Migration_8_9
 import me.rerere.rikkahub.utils.JsonInstant
 
+internal const val APP_DATABASE_VERSION = 35
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -55,7 +57,7 @@ import me.rerere.rikkahub.utils.JsonInstant
         TranslationHistoryEntity::class,
         UsageRecordEntity::class,
     ],
-    version = 35,
+    version = APP_DATABASE_VERSION,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),

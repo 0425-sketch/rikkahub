@@ -192,7 +192,7 @@
   <string name="backup_page_reminder_no_record">未记录备份时间</string>
   <string name="backup_page_reminder_title">备份提醒</string>
   <string name="backup_page_restart_app">重启应用</string>
-  <string name="backup_page_restart_desc">应用需要重启以使设置生效。</string>
+  <string name="backup_page_restart_desc">点下方按钮退出应用，再重新打开使更改生效。</string>
   <string name="backup_page_restore">恢复</string>
   <string name="backup_page_restore_failed">恢复失败: %s</string>
   <string name="backup_page_restore_now">恢复</string>
@@ -1969,4 +1969,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_model_page_enhancement_budget_default">使用模型默认档位</string>
   <string name="setting_model_page_enhancement_budget_unavailable">这个模型不支持调整思考预算。</string>
   <string name="prompt_enhancement_page_run">一键增强</string>
+  <string name="backup_page_local_export_desc">备份 ZIP 可能含 API Key，请妥善保管。</string>
+  <string name="backup_page_local_import_confirm">恢复数据库会整体替换当前的聊天和记忆，同路径文件会被覆盖。恢复含设置的备份会清除当前 ChatGPT 登录，需要重新授权。重启应用后生效。</string>
+  <string name="backup_page_export_failed">备份失败。%1$s</string>
+  <string name="backup_page_export_target_unusable">所选文件不能作为本次备份使用。%1$s</string>
+  <string name="backup_page_export_interrupted">导出中断，所选文件可能不完整，请重新导出。</string>
+  <string name="backup_page_local_read_error">无法读取所选 ZIP 文件。</string>
+  <string name="safe_mode_backup_database">数据库</string>
+  <string name="safe_mode_backup_file_count">已导出的文件数：%1$d</string>
+  <string name="safe_mode_backup_exported">本次 ZIP 已保存以下内容\n%1$s</string>
+  <string name="safe_mode_import_all">安全模式将恢复 ZIP 中所有可识别的项目。</string>
 </resources>

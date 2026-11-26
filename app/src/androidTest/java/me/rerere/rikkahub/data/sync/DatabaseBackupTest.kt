@@ -6,8 +6,10 @@ import io.requery.android.database.sqlite.SQLiteDatabase
 import io.requery.android.database.sqlite.SQLiteDatabaseConfiguration
 import me.rerere.rikkahub.data.db.SQLiteConfiguration
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -75,6 +77,67 @@ class DatabaseBackupTest {
             assertEquals(1L, it.longForQuery("SELECT count(*) FROM messages", null))
             assertEquals(1L, it.longForQuery("SELECT count(*) FROM search WHERE search MATCH 'hello'", null))
         }
+    }
+
+    @Test fun readOnlyRescueIncludesWalAndFtsAndPreservesSourceSchema() {
+        val source = File(directory, "old-schema")
+        val snapshot = File(directory, "snapshot")
+        val wal = File(source.path + "-wal")
+        createWalDatabase(source).use { writer ->
+            writer.version = 27
+            writer.execSQL("CREATE VIRTUAL TABLE search USING fts5(text, tokenize='simple')")
+            writer.execSQL("INSERT INTO search(text) VALUES ('rescue')")
+            val sourceBefore = source.readBytes()
+            val walBefore = wal.readBytes()
+            DatabaseBackup.createFileSnapshot(context, source, snapshot)
+            assertArrayEquals(sourceBefore, source.readBytes())
+            assertArrayEquals(walBefore, wal.readBytes())
+            writer.execSQL("INSERT INTO messages(text) VALUES ('after rescue')")
+        }
+        assertFalse(File(snapshot.path + "-wal").exists())
+        assertFalse(File(snapshot.path + "-shm").exists())
+        open(snapshot).use {
+            assertEquals(27, it.version)
+            assertEquals(1L, it.longForQuery("SELECT count(*) FROM messages", null))
+            assertEquals("committed only in WAL", it.stringForQuery("SELECT text FROM messages", null))
+            assertEquals(1L, it.longForQuery("SELECT count(*) FROM search WHERE search MATCH 'rescue'", null))
+        }
+    }
+
+    @Test fun readOnlyRescueRejectsAbsentEmptyAndCorruptDatabasesWithoutReplacingThem() {
+        val source = File(directory, "source")
+        val snapshot = File(directory, "snapshot")
+        assertThrows(IllegalArgumentException::class.java) {
+            DatabaseBackup.createFileSnapshot(context, source, snapshot)
+        }
+        assertFalse(source.exists())
+        assertFalse(snapshot.exists())
+
+        source.createNewFile()
+        assertThrows(IllegalArgumentException::class.java) {
+            DatabaseBackup.createFileSnapshot(context, source, snapshot)
+        }
+        assertTrue(source.isFile)
+        assertEquals(0L, source.length())
+        assertFalse(snapshot.exists())
+
+        open(source).use { it.execSQL("PRAGMA user_version=0") }
+        val uninitialized = source.readBytes()
+        assertTrue(uninitialized.isNotEmpty())
+        val failure = assertThrows(IllegalArgumentException::class.java) {
+            DatabaseBackup.createFileSnapshot(context, source, snapshot)
+        }
+        assertTrue(failure.message.orEmpty().contains("version 0"))
+        assertArrayEquals(uninitialized, source.readBytes())
+        assertFalse(snapshot.exists())
+
+        val corruptBytes = "broken database".toByteArray()
+        source.writeBytes(corruptBytes)
+        assertThrows(Exception::class.java) {
+            DatabaseBackup.createFileSnapshot(context, source, snapshot)
+        }
+        assertArrayEquals(corruptBytes, source.readBytes())
+        assertFalse(snapshot.exists())
     }
 
     @Test fun corruptDatabaseIsRejected() {

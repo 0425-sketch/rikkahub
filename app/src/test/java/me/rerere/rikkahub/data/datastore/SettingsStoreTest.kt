@@ -30,6 +30,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -61,6 +62,48 @@ class SettingsStoreTest {
     }
 
     private suspend fun reopened(): Settings = open().store.awaitLoaded()
+
+    @Test
+    fun `backup rejects corruption replacement through launches until a new configuration is saved`() = runBlocking {
+        // Marker written by the DataStore corruption handler in the same transaction as the reset.
+        open().disk.edit { prefs -> prefs[SETTINGS_UNAVAILABLE] = true }
+        open().store.apply {
+            incrementLaunchCount()
+            update { it }
+        }
+        val restarted = open().store
+        assertThrows(SettingsUnavailableForBackupException::class.java) {
+            runBlocking { restarted.readForBackup() }
+        }
+
+        restarted.update { it.copy(titlePrompt = "newly configured") }
+        val (settings, count) = open().store.readForBackup()
+        assertEquals("newly configured", settings.titlePrompt)
+        assertEquals(1, count)
+    }
+
+    @Test
+    fun `backup uses committed settings and fails if their fields cannot be decoded`() = runBlocking {
+        val opened = open()
+        val store = opened.store
+        val disk = opened.disk
+        store.update { it.copy(titlePrompt = "committed") }
+        val gate = CompletableDeferred<Unit>()
+        disk.writeGate = gate
+        val saving = launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(titlePrompt = "pending") } }
+        try {
+            assertEquals("pending", store.settingsFlow.value.titlePrompt)
+            assertEquals("committed", store.readForBackup().first.titlePrompt)
+        } finally {
+            gate.complete(Unit)
+            saving.join()
+        }
+        disk.edit { it[SettingsStore.PROVIDERS] = "{invalid sample-secret" }
+        val failure = assertThrows(SettingsUnavailableForBackupException::class.java) {
+            runBlocking { store.readForBackup() }
+        }
+        assertFalse(failure.message.orEmpty().contains("sample-secret"))
+    }
 
     @Test
     fun `diagnostic settings default off apply immediately and survive process reopening`() = runBlocking {

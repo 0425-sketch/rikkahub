@@ -19,6 +19,7 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.files.saveUploadFromBytes
 import me.rerere.rikkahub.data.model.bindConfig
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.sync.BackupManager
 import me.rerere.rikkahub.data.sync.S3BackupItem
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
@@ -39,6 +40,7 @@ class BackupVM(
     private val s3Sync: S3Sync,
     private val conversationRepository: ConversationRepository,
     private val filesManager: FilesManager,
+    private val backupManager: BackupManager,
 ) : ViewModel() {
     val settings = settingsStore.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -99,12 +101,11 @@ class BackupVM(
         webDavSync.deleteBackupFile(settings.value.webDavConfig, item)
     }
 
-    suspend fun exportToFile(): File {
-        val file = webDavSync.prepareBackupFile(
-            settings.value.webDavConfig.copy(items = localBackupItems.value)
+    internal suspend fun prepareLocalBackup() = localBackupItems.value.let { selected ->
+        backupManager.prepareLocalBackup(
+            includeDatabase = WebDavConfig.BackupItem.DATABASE in selected,
+            includeFiles = WebDavConfig.BackupItem.FILES in selected,
         )
-        recordBackupTime()
-        return file
     }
 
     suspend fun restoreFromLocalFile(file: File) {
@@ -250,7 +251,7 @@ class BackupVM(
         s3Sync.deleteS3BackupFile(settings.value.s3Config, item)
     }
 
-    private suspend fun recordBackupTime() {
+    internal suspend fun recordBackupTime() {
         settingsStore.update { settings ->
             settings.copy(
                 backupReminderConfig = settings.backupReminderConfig.copy(

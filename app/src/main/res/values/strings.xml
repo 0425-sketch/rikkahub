@@ -192,7 +192,7 @@
   <string name="backup_page_reminder_no_record">No backup time recorded</string>
   <string name="backup_page_reminder_title">Backup Reminder</string>
   <string name="backup_page_restart_app">Restart App</string>
-  <string name="backup_page_restart_desc">The app needs to restart for the changes to take effect.</string>
+  <string name="backup_page_restart_desc">Tap the button to close the app, then reopen it for the changes to take effect.</string>
   <string name="backup_page_restore">Restore</string>
   <string name="backup_page_restore_failed">Restore failed: %s</string>
   <string name="backup_page_restore_now">Restore</string>
@@ -1967,4 +1967,14 @@
   <string name="setting_model_page_enhancement_budget_default">Use model default</string>
   <string name="setting_model_page_enhancement_budget_unavailable">This model does not support a configurable reasoning budget.</string>
   <string name="prompt_enhancement_page_run">Enhance</string>
+  <string name="backup_page_local_export_desc">The ZIP may contain API keys. Store it somewhere private.</string>
+  <string name="backup_page_local_import_confirm">Restoring a database replaces all current chats and memories. Files with matching paths are overwritten. Restoring settings clears your current ChatGPT sign-in and requires authorization again. Changes take effect when you reopen the app.</string>
+  <string name="backup_page_export_failed">Backup failed. %1$s</string>
+  <string name="backup_page_export_target_unusable">The selected file cannot be used as this backup. %1$s</string>
+  <string name="backup_page_export_interrupted">Export interrupted. The destination file may be incomplete. Export again.</string>
+  <string name="backup_page_local_read_error">Unable to read the selected ZIP file.</string>
+  <string name="safe_mode_backup_database">Database</string>
+  <string name="safe_mode_backup_file_count">Files saved: %1$d</string>
+  <string name="safe_mode_backup_exported">This ZIP contains\n%1$s</string>
+  <string name="safe_mode_import_all">Safe mode will restore every supported item in the ZIP.</string>
 </resources>

@@ -52,12 +52,15 @@ import me.rerere.rikkahub.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.sync.BackupManager
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
+import me.rerere.rikkahub.ui.pages.backup.rememberLocalBackupExport
 import me.rerere.rikkahub.ui.theme.RikkahubTheme
 import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.utils.CrashHandler
@@ -69,6 +72,7 @@ private const val LARGE_FIELD_MIN_CHARS = 5_000_000
 
 class SafeModeActivity : ComponentActivity() {
     private val settingsStore by inject<SettingsStore>()
+    private val backupManager by inject<BackupManager>()
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +91,10 @@ class SafeModeActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val context = LocalContext.current
 
+                val backup = viewModel { SafeModeBackup(applicationContext, backupManager) }
+                val export = rememberLocalBackupExport(backup::prepare, backup::exported) { backup.message = it }
+                val busy = export.busy || backup.importing || backup.staged
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     topBar = {
@@ -97,6 +105,7 @@ class SafeModeActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)
+                            .verticalScroll(rememberScrollState())
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -118,6 +127,7 @@ class SafeModeActivity : ComponentActivity() {
                                 startActivity(Intent(this@SafeModeActivity, RouteActivity::class.java))
                                 finish()
                             },
+                            enabled = !busy,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(stringResource(R.string.safe_mode_enter_app))
@@ -125,10 +135,13 @@ class SafeModeActivity : ComponentActivity() {
 
                         OutlinedButton(
                             onClick = { showAssistantPicker = true },
+                            enabled = !busy,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(stringResource(R.string.safe_mode_switch_assistant))
                         }
+
+                        SafeModeBackupControls(backup, export, enabled = !busy && !clearing)
 
                         if (largeFields.isNotEmpty()) {
                             CardGroup(
@@ -144,7 +157,7 @@ class SafeModeActivity : ComponentActivity() {
                                         trailingContent = {
                                             FilledTonalButton(
                                                 onClick = { pendingClearKey = key },
-                                                enabled = !clearing,
+                                                enabled = !busy && !clearing,
                                             ) {
                                                 Text("Clear")
                                             }
@@ -173,20 +186,16 @@ class SafeModeActivity : ComponentActivity() {
                                 }
                             }
                             Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
                             ) {
-                                val vScroll = rememberScrollState()
                                 val hScroll = rememberScrollState()
                                 Text(
                                     text = stackTrace,
                                     modifier = Modifier
                                         .padding(12.dp)
-                                        .verticalScroll(vScroll)
                                         .horizontalScroll(hScroll),
                                     style = MaterialTheme.typography.bodySmall,
                                     fontFamily = FontFamily.Monospace,

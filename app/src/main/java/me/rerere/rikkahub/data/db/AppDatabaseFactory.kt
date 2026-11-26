@@ -47,7 +47,9 @@ internal object AppDatabaseFactory {
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     // 旧版本搜索用 jieba 分词，会把词典解压到这里（约 14MB），现在不再需要
-                    File(context.filesDir, "simple_dict").takeIf { it.exists() }?.deleteRecursively()
+                    if (name == SQLiteConfiguration.DATABASE_NAME) {
+                        File(context.filesDir, "simple_dict").takeIf { it.exists() }?.deleteRecursively()
+                    }
                     initializeSearch(db)
                 }
             })

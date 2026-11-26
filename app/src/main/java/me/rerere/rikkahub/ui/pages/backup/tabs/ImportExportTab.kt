@@ -16,13 +16,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import me.rerere.ui.toast.ToastType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -32,16 +33,16 @@ import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.WebDavConfig
 import me.rerere.rikkahub.data.sync.importer.DeepSeekImportResult
+import me.rerere.rikkahub.data.sync.withLocalRestoreArchive
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.pages.backup.BackupVM
 import me.rerere.rikkahub.ui.pages.backup.components.BackupActionIcon
 import me.rerere.rikkahub.ui.pages.backup.components.backupContentItem
+import me.rerere.rikkahub.ui.pages.backup.rememberLocalBackupExport
+import me.rerere.ui.toast.ToastType
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 @Composable
 fun ImportExportTab(
@@ -52,50 +53,21 @@ fun ImportExportTab(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val selectedBackupItems by vm.localBackupItems.collectAsStateWithLifecycle()
-    var isExporting by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     var showImportConfirmDialog by remember { mutableStateOf(false) }
     var deepSeekImportResult by remember { mutableStateOf<DeepSeekImportResult?>(null) }
 
     // 导入类型：local、chatbox、cherry、deepseek
-    var importType by remember { mutableStateOf("local") }
+    var importType by rememberSaveable { mutableStateOf("local") }
 
-    // 创建文件保存的launcher
-    val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-        uri?.let { targetUri ->
-            scope.launch {
-                isExporting = true
-                runCatching {
-                    // 导出文件
-                    val exportFile = vm.exportToFile()
-
-                    // 复制到用户选择的位置
-                    context.contentResolver.openOutputStream(targetUri)?.use { outputStream ->
-                        FileInputStream(exportFile).use { inputStream ->
-                            inputStream.copyTo(outputStream)
-                        }
-                    }
-
-                    // 清理临时文件
-                    exportFile.delete()
-
-                    toaster.show(
-                        context.getString(R.string.backup_page_backup_success),
-                        type = ToastType.Success
-                    )
-                }.onFailure { e ->
-                    e.printStackTrace()
-                    toaster.show(
-                        context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
-                        type = ToastType.Error
-                    )
-                }
-                isExporting = false
-            }
-        }
-    }
+    val export = rememberLocalBackupExport(
+        prepare = vm::prepareLocalBackup,
+        onSuccess = {
+            vm.recordBackupTime()
+            toaster.show(context.getString(R.string.backup_page_backup_success), type = ToastType.Success)
+        },
+        onError = { message -> toaster.show(message, type = ToastType.Error) },
+    )
 
     // 创建文件选择的launcher
     val openDocumentLauncher = rememberLauncherForActivityResult(
@@ -104,25 +76,9 @@ fun ImportExportTab(
         uri?.let { sourceUri ->
             scope.launch {
                 isRestoring = true
-                runCatching {
+                try {
                     when (importType) {
-                        "local" -> {
-                            // 本地备份导入：处理zip文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
-
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
-                            }
-
-                            // 从临时文件恢复
-                            vm.restoreFromLocalFile(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
-                        }
+                        "local" -> withLocalRestoreArchive(context, sourceUri, vm::restoreFromLocalFile)
 
                         "chatbox" -> {
                             // Chatbox Backup v2：处理 ZIP 文件
@@ -178,20 +134,25 @@ fun ImportExportTab(
                     }
 
                     if (importType != "deepseek") {
-                        toaster.show(
-                            context.getString(R.string.backup_page_restore_success),
-                            type = ToastType.Success
-                        )
+                        if (importType != "local") {
+                            toaster.show(
+                                context.getString(R.string.backup_page_restore_success),
+                                type = ToastType.Success
+                            )
+                        }
                         onShowRestartDialog()
                     }
-                }.onFailure { e ->
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
                     e.printStackTrace()
                     toaster.show(
                         context.getString(R.string.backup_page_restore_failed, e.message ?: ""),
                         type = ToastType.Error
                     )
+                } finally {
+                    isRestoring = false
                 }
-                isRestoring = false
             }
         }
     }
@@ -217,28 +178,22 @@ fun ImportExportTab(
                 }
             }
             item(
-                onClick = if (!isExporting) {
-                    {
-                        val timestamp = LocalDateTime.now()
-                            .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-                        createDocumentLauncher.launch("rikkahub_backup_$timestamp.zip")
-                    }
-                } else null,
+                onClick = if (!export.busy && !isRestoring) export.launch else null,
                 headlineContent = { Text(stringResource(R.string.backup_page_local_backup_export)) },
                 supportingContent = {
                     Text(
-                        if (isExporting) {
+                        if (export.busy) {
                             stringResource(R.string.backup_page_exporting)
                         } else {
-                            stringResource(R.string.backup_page_export_desc)
+                            stringResource(R.string.backup_page_local_export_desc)
                         }
                     )
                 },
-                leadingContent = { BackupActionIcon(HugeIcons.FileExport, loading = isExporting) },
+                leadingContent = { BackupActionIcon(HugeIcons.FileExport, loading = export.busy) },
             )
 
             item(
-                onClick = if (!isRestoring) {
+                onClick = if (!isRestoring && !export.busy) {
                     {
                         showImportConfirmDialog = true
                     }
@@ -263,7 +218,7 @@ fun ImportExportTab(
             title = { Text(stringResource(R.string.backup_page_import_from_other_app)) },
         ) {
             item(
-                onClick = if (!isRestoring) {
+                onClick = if (!isRestoring && !export.busy) {
                     {
                         importType = "deepseek"
                         openDocumentLauncher.launch(arrayOf("application/zip"))
@@ -279,7 +234,7 @@ fun ImportExportTab(
             )
 
             item(
-                onClick = if (!isRestoring) {
+                onClick = if (!isRestoring && !export.busy) {
                     {
                         importType = "chatbox"
                         openDocumentLauncher.launch(arrayOf("application/zip"))
@@ -293,7 +248,7 @@ fun ImportExportTab(
             )
 
             item(
-                onClick = if (!isRestoring) {
+                onClick = if (!isRestoring && !export.busy) {
                     {
                         importType = "cherry"
                         openDocumentLauncher.launch(arrayOf("application/zip"))
@@ -335,7 +290,7 @@ fun ImportExportTab(
         AlertDialog(
             onDismissRequest = { showImportConfirmDialog = false },
             title = { Text(stringResource(R.string.backup_page_local_backup_import)) },
-            text = { Text(stringResource(R.string.backup_page_import_overwrite_confirm)) },
+            text = { Text(stringResource(R.string.backup_page_local_import_confirm)) },
             confirmButton = {
                 TextButton(
                     onClick = {

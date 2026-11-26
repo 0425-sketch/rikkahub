@@ -192,7 +192,7 @@
   <string name="backup_page_reminder_no_record">未記錄備份時間</string>
   <string name="backup_page_reminder_title">備份提醒</string>
   <string name="backup_page_restart_app">重啟應用</string>
-  <string name="backup_page_restart_desc">應用需要重啟以使設置生效。</string>
+  <string name="backup_page_restart_desc">點下方按鈕離開應用程式，再重新開啟以套用變更。</string>
   <string name="backup_page_restore">恢復</string>
   <string name="backup_page_restore_failed">恢復失敗: %s</string>
   <string name="backup_page_restore_now">恢復</string>
@@ -1882,4 +1882,14 @@
   <string name="backup_page_import_deepseek_complete">DeepSeek 匯入完成</string>
   <string name="backup_page_import_deepseek_summary">已匯入 %1$d 個對話\n略過 %2$d 個已存在的對話\n略過 %3$d 個空對話\n%4$d 個附件未包含在匯出檔中或無法匯入，已保留檔案名稱提示。</string>
   <string name="backup_page_import_deepseek_missing_attachment">[附件未包含在匯出檔中或無法匯入：%1$s]</string>
+  <string name="backup_page_local_export_desc">備份 ZIP 可能含 API Key，請妥善保管。</string>
+  <string name="backup_page_local_import_confirm">還原資料庫會整體取代目前的聊天和記憶，同路徑的檔案會被覆寫。還原含設定的備份會清除目前的 ChatGPT 登入，需要重新授權。重新啟動後生效。</string>
+  <string name="backup_page_export_failed">備份失敗。%1$s</string>
+  <string name="backup_page_export_target_unusable">所選檔案無法用作本次備份。%1$s</string>
+  <string name="backup_page_export_interrupted">匯出中斷，所選檔案可能不完整，請重新匯出。</string>
+  <string name="backup_page_local_read_error">無法讀取所選 ZIP 檔。</string>
+  <string name="safe_mode_backup_database">資料庫</string>
+  <string name="safe_mode_backup_file_count">已匯出的檔案數：%1$d</string>
+  <string name="safe_mode_backup_exported">本次 ZIP 已儲存下列內容\n%1$s</string>
+  <string name="safe_mode_import_all">安全模式會還原 ZIP 中所有可識別的項目。</string>
 </resources>

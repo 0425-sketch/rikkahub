@@ -1,10 +1,10 @@
 package me.rerere.rikkahub.data.sync
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -29,23 +29,35 @@ import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.MediaCreationFiles
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
+data class PreparedBackup(
+    val file: File,
+    val hasSettings: Boolean,
+    val hasDatabase: Boolean,
+    val attachmentCount: Int,
+    val byteCount: Long = file.length(),
+)
+
 /** Shared archive format and restore lifecycle for local, WebDAV and S3 backups. */
 class BackupManager internal constructor(
     private val context: Context,
-    private val database: AppDatabase,
+    private val database: () -> AppDatabase,
     private val settingsStore: SettingsStore,
     private val json: Json,
     private val createDatabase: (Context, String) -> AppDatabase,
-    private val normalizeDatabase: (Context, File) -> Unit,
+    private val normalizeDatabase: (Context, File) -> Int,
 ) {
-    constructor(context: Context, database: AppDatabase, settingsStore: SettingsStore, json: Json) : this(
+    constructor(context: Context, database: () -> AppDatabase, settingsStore: SettingsStore, json: Json) : this(
         context, database, settingsStore, json,
         { databaseContext, name -> AppDatabaseFactory.create(databaseContext, name) },
         DatabaseBackup::normalize,
@@ -53,46 +65,106 @@ class BackupManager internal constructor(
 
     private val restoreMutex = Mutex()
 
-    suspend fun createBackup(includeDatabase: Boolean, includeFiles: Boolean): File = withContext(Dispatchers.IO) {
-        val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-        val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
-        val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
+    suspend fun createBackup(includeDatabase: Boolean, includeFiles: Boolean): File =
+        prepareLocalBackup(includeDatabase, includeFiles).file
+
+    suspend fun prepareLocalBackup(
+        includeDatabase: Boolean = true,
+        includeFiles: Boolean = true,
+        safeMode: Boolean = false,
+        includeSettings: Boolean = true,
+    ): PreparedBackup {
+        // A cancelled dispatch back to the UI must also discard a completed but unclaimed archive.
+        var temporaryArchive: File? = null
         try {
-            val settings = settingsStore.awaitLoaded()
-            ZipOutputStream(FileOutputStream(archive)).use { zip ->
-                zip.putNextEntry(ZipEntry("settings.json"))
-                val settingsJson = json.encodeSettings(settings, settingsStore.launchCountFlow.first())
-                zip.write(settingsJson.toByteArray(Charsets.UTF_8))
-                zip.closeEntry()
-                if (includeDatabase) {
-                    val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
-                    DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, snapshot)
-                    addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
-                }
-                if (includeFiles) {
-                    for (folder in ATTACHMENT_FOLDERS) {
-                        val directory = File(context.filesDir, folder)
-                        val files = if (folder in NESTED_ATTACHMENT_FOLDERS) directory.walkTopDown().asSequence()
-                        else directory.listFiles().orEmpty().asSequence()
-                        for (file in files.filter { it.isFile }) {
-                            currentCoroutineContext().ensureActive()
-                            // A media result still being downloaded is incomplete and gets renamed when it finishes.
-                            if (folder == FileFolders.MEDIA_CREATION &&
-                                file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)
-                            ) continue
-                            val relative = file.relativeTo(directory).invariantSeparatorsPath
-                            PendingRestore.resolveInside(directory, relative)
-                            addFile(zip, file, "$folder/$relative")
+            return withContext(Dispatchers.IO) {
+                val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
+                val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
+                temporaryArchive = archive
+                val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
+                val entries = mutableSetOf<String>()
+                try {
+                    ZipOutputStream(FileOutputStream(archive)).use { zip ->
+                        if (includeSettings) {
+                            val (settings, launchCount) = settingsStore.readForBackup()
+                            zip.putNextEntry(ZipEntry("settings.json"))
+                            zip.write(json.encodeSettings(settings, launchCount).toByteArray(Charsets.UTF_8))
+                            zip.closeEntry()
+                            entries.add("settings.json")
                         }
+                        if (includeDatabase) {
+                            val snapshot = snapshot(staging, safeMode)
+                            addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
+                            entries.add(DatabaseBackup.ARCHIVE_DATABASE)
+                        }
+                        if (includeFiles) addAttachments(zip, entries)
+                    }
+                } finally {
+                    staging.deleteRecursively()
+                }
+                check(entries.isNotEmpty()) { "No selected data found to back up" }
+                ZipFile(archive).use { zip ->
+                    check(zip.size() == entries.size) { "Backup archive has unexpected entries" }
+                    for (name in entries) {
+                        val entry = checkNotNull(zip.getEntry(name)) { "Missing backup entry: $name" }
+                        zip.readVerified(entry)
                     }
                 }
+                PreparedBackup(
+                    file = archive,
+                    hasSettings = "settings.json" in entries,
+                    hasDatabase = DatabaseBackup.ARCHIVE_DATABASE in entries,
+                    attachmentCount = entries.count { '/' in it },
+                )
             }
-            archive
         } catch (e: Throwable) {
-            archive.delete()
+            temporaryArchive?.delete()
             throw e
-        } finally {
-            staging.deleteRecursively()
+        }
+    }
+
+    private suspend fun snapshot(staging: File, safeMode: Boolean): File {
+        val source = context.getDatabasePath(SQLiteConfiguration.DATABASE_NAME)
+        require(source.isFile && source.length() > 0) { "Database is missing or empty" }
+        if (!safeMode) {
+            val destination = File(staging, "room.db")
+            try {
+                val room = database()
+                // Opening Room may initialize an empty schema or invoke its destructive corruption handler.
+                if (!room.isOpen) DatabaseBackup.withValidatedSource(context, source)
+                DatabaseBackup.createSnapshot(room.openHelper.writableDatabase, destination)
+                return destination
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                currentCoroutineContext().ensureActive()
+                // Release any partial Room snapshot before allocating space for the read-only retry.
+                check(!destination.exists() || destination.delete()) { "Cannot remove incomplete database snapshot" }
+            }
+        }
+        val destination = File(staging, "readonly.db")
+        DatabaseBackup.createFileSnapshot(context, source, destination)
+        return destination
+    }
+
+    private suspend fun addAttachments(zip: ZipOutputStream, entries: MutableSet<String>) {
+        for (folder in ATTACHMENT_FOLDERS) {
+            val directory = context.filesDir.toPath().resolve(folder)
+            if (Files.notExists(directory, NOFOLLOW_LINKS) || Files.isSymbolicLink(directory)) continue
+            check(Files.isDirectory(directory, NOFOLLOW_LINKS)) { "Cannot read backup folder: $folder" }
+            val depth = if (folder in NESTED_ATTACHMENT_FOLDERS) Int.MAX_VALUE else 1
+            // By default Files.walk never enters a symbolic link, even inside nested skills or galleries.
+            Files.walk(directory, depth).use { paths ->
+                for (path in paths.iterator()) {
+                    currentCoroutineContext().ensureActive()
+                    if (!Files.isRegularFile(path, NOFOLLOW_LINKS)) continue
+                    val name = "$folder/${path.toFile().relativeTo(directory.toFile()).invariantSeparatorsPath}"
+                    if (!isAttachment(name)) continue
+                    val file = PendingRestore.resolveInside(context.filesDir, name)
+                    addFile(zip, file, name)
+                    entries.add(name)
+                }
+            }
         }
     }
 
@@ -124,11 +196,9 @@ class BackupManager internal constructor(
                             check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) {
                                 "Cannot create backup staging directory"
                             }
-                            zip.getInputStream(entry).use { input ->
-                                FileOutputStream(target).use { output ->
-                                    input.copyTo(output)
-                                    output.fd.sync()
-                                }
+                            FileOutputStream(target).use { output ->
+                                zip.readVerified(entry, output)
+                                output.fd.sync()
                             }
                             restoredEntries++
                         }
@@ -141,7 +211,7 @@ class BackupManager internal constructor(
                         restoredPaths = seen.filterTo(mutableSetOf()) { it.substringBefore('/') in ATTACHMENT_FOLDERS },
                     )
                     if (stagedDatabase.exists()) {
-                        normalizeDatabase(context, stagedDatabase)
+                        DatabaseBackup.requireRestorableVersion(normalizeDatabase(context, stagedDatabase))
                         // Reject unsupported schemas before publishing; run supported old migrations on the copy.
                         val room = createDatabase(context, stagedDatabase.absolutePath)
                         try {
@@ -155,10 +225,13 @@ class BackupManager internal constructor(
 
                     val settingsFile = File(staging, "settings.json")
                     if (settingsFile.exists()) {
-                        val migrated = SettingsJsonMigrator.migrate(settingsFile.readText())
-                        val settings = try {
-                            json.decodeBackupSettings(migrated)
-                        } catch (_: IllegalArgumentException) {
+                        val raw = settingsFile.readText()
+                        val (settings, launchCount) = try {
+                            val migrated = SettingsJsonMigrator.migrate(raw)
+                            json.decodeBackupSettings(migrated) to json.launchCountOf(migrated)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
                             // Decoder errors can echo the archived token values from older backups.
                             throw IllegalArgumentException("Backup settings could not be decoded")
                         }
@@ -166,7 +239,7 @@ class BackupManager internal constructor(
                         // Persist the migrated value once, including generated IDs, for restart/retry consistency.
                         PendingRestore.writeDurably(
                             settingsFile,
-                            json.encodeSettings(pathRemapper.settings(settings), json.launchCountOf(migrated)),
+                            json.encodeSettings(pathRemapper.settings(settings), launchCount),
                         )
                     }
                     currentCoroutineContext().ensureActive()
@@ -183,21 +256,47 @@ class BackupManager internal constructor(
         val relative = name.substringAfter('/')
         require(relative.isNotBlank()) { "Invalid backup attachment: $name" }
         require(folder in NESTED_ATTACHMENT_FOLDERS || '/' !in relative) { "Invalid backup attachment: $name" }
-        return true
+        return folder != FileFolders.MEDIA_CREATION || !relative.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)
     }
 
-    private fun addFile(zip: ZipOutputStream, file: File, name: String) {
+    // ZipFile exposes the central directory's CRC but need not check it when reading an entry.
+    private suspend fun ZipFile.readVerified(entry: ZipEntry, output: OutputStream? = null) {
+        val crc = CRC32()
+        val size = getInputStream(entry).use { input ->
+            copyChunks(input) { buffer, count ->
+                crc.update(buffer, 0, count)
+                output?.write(buffer, 0, count)
+            }
+        }
+        check(size == entry.size && crc.value == entry.crc) { "Damaged backup entry: ${entry.name}" }
+    }
+
+    private suspend inline fun copyChunks(input: InputStream, consume: (ByteArray, Int) -> Unit): Long {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val count = input.read(buffer)
+            if (count == -1) return total
+            consume(buffer, count)
+            total += count
+        }
+    }
+
+    private suspend fun addFile(zip: ZipOutputStream, file: File, name: String) {
         zip.putNextEntry(ZipEntry(name))
-        file.inputStream().use { it.copyTo(zip) }
+        file.inputStream().use { input ->
+            copyChunks(input) { buffer, count -> zip.write(buffer, 0, count) }
+        }
         zip.closeEntry()
     }
 
     companion object {
         private val ATTACHMENT_FOLDERS =
-            listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION)
+            listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION, FileFolders.IMAGES)
 
         /** Backed up with their subdirectories; the other folders only contain top-level files. */
-        private val NESTED_ATTACHMENT_FOLDERS = setOf(FileFolders.SKILLS, FileFolders.MEDIA_CREATION)
+        private val NESTED_ATTACHMENT_FOLDERS = setOf(FileFolders.SKILLS, FileFolders.MEDIA_CREATION, FileFolders.IMAGES)
 
         // 启动次数不在 Settings 里，备份文件里仍放在 settings.json 的这个字段，和旧备份保持一致
         private const val LAUNCH_COUNT_KEY = "launchCount"

@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.datastore
 import android.content.Context
 import android.util.Log
 import androidx.datastore.core.CorruptionException
+import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.IOException
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
@@ -10,15 +11,16 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.preferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +44,9 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV5Migration
 import me.rerere.rikkahub.data.datastore.migration.PromptEnhancementDefaultsMigration
+import me.rerere.rikkahub.data.db.SQLiteConfiguration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.utils.CrashHandler
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
@@ -50,6 +54,18 @@ import kotlin.uuid.Uuid
 private const val TAG = "PreferencesStore"
 
 private const val SETTINGS_STORE_NAME = "settings"
+
+// DataStore supplies defaults for a missing, zero-byte or corrupt file. Keep their origin across restarts.
+internal val SETTINGS_UNAVAILABLE = booleanPreferencesKey("settings_unavailable_for_backup")
+
+private object MarkMissingSettings : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences) = currentData.asMap().isEmpty()
+    override suspend fun migrate(currentData: Preferences) = preferencesOf(SETTINGS_UNAVAILABLE to true)
+    override suspend fun cleanUp() = Unit
+}
+
+internal class SettingsUnavailableForBackupException :
+    java.io.IOException("Saved settings could not be read for backup.")
 
 // 读取失败时的最大重试次数
 private const val READ_MAX_RETRIES = 3
@@ -63,8 +79,14 @@ private val Context.settingsStore: DataStore<Preferences>
         settingsDataStore ?: createSettingsDataStore(applicationContext).also { settingsDataStore = it }
     }
 
-private fun createSettingsDataStore(context: Context): DataStore<Preferences> {
+internal fun createSettingsDataStore(
+    context: Context,
+    scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+): DataStore<Preferences> {
     val file = context.preferencesDataStoreFile(SETTINGS_STORE_NAME)
+    // Capture before normal first-run migrations populate the file. Fresh installs still use defaults.
+    val missingFromExistingInstall = file.length() == 0L &&
+        (context.getDatabasePath(SQLiteConfiguration.DATABASE_NAME).isFile || CrashHandler.hasCrashed(context))
     return PreferenceDataStoreFactory.create(
         corruptionHandler = ReplaceFileCorruptionHandler { exception ->
             // 文件已损坏无法解析, 先留一份原文件用于排查/抢救, 再重建为空
@@ -74,9 +96,11 @@ private fun createSettingsDataStore(context: Context): DataStore<Preferences> {
             }.onFailure {
                 Log.e(TAG, "Failed to backup corrupted settings file", it)
             }
-            emptyPreferences()
+            preferencesOf(SETTINGS_UNAVAILABLE to true)
         },
-        migrations = listOf(
+        scope = scope,
+        migrations = listOfNotNull(
+            MarkMissingSettings.takeIf { missingFromExistingInstall },
             PreferenceStoreV1Migration(),
             PreferenceStoreV2Migration(),
             PreferenceStoreV3Migration(),
@@ -206,6 +230,7 @@ class SettingsStore internal constructor(
             context.settingsStore.edit { preferences ->
                 preferences[LAUNCH_COUNT] = launchCount
                 preferences.putSettings(settings.normalized())
+                preferences.remove(SETTINGS_UNAVAILABLE)
             }
         }
     }
@@ -230,6 +255,20 @@ class SettingsStore internal constructor(
     /** 等启动时的读盘完成后返回当前设置，不会返回 [Settings.dummy]。已经加载完时直接返回。 */
     suspend fun awaitLoaded(): Settings = state.first { !it.init }
 
+    /** Decode settings and launch count from the same committed DataStore snapshot. */
+    internal suspend fun readForBackup(): Pair<Settings, Int> {
+        val preferences = preferencesFlow.first()
+        if (preferences[SETTINGS_UNAVAILABLE] == true) throw SettingsUnavailableForBackupException()
+        return try {
+            preferences.toSettings().normalized() to (preferences[LAUNCH_COUNT] ?: 0)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // JSON decoder errors can expose fragments of credentials in a backup error dialog.
+            throw SettingsUnavailableForBackupException()
+        }
+    }
+
     private val stateLock = Any()
 
     // 已经落盘的那一份，只在持有 persistMutex 时读写。
@@ -237,11 +276,18 @@ class SettingsStore internal constructor(
     private var persisted: Settings? = null
     private val persistMutex = Mutex()
 
+    // Held only after replacement with defaults; a launch counter or no-op write is not a new configuration.
+    private var replacementDefaults: Settings? = null
+
     init {
         // 整份设置的 JSON 解码很重，不能放在主线程
         scope.launch(Dispatchers.Default) {
             state.value = try {
-                preferencesFlow.first().toSettings().normalized().also(::applyDiagnosticSettings)
+                val preferences = preferencesFlow.first()
+                preferences.toSettings().normalized().also { loaded ->
+                    if (preferences[SETTINGS_UNAVAILABLE] == true) replacementDefaults = loaded
+                    applyDiagnosticSettings(loaded)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -293,7 +339,12 @@ class SettingsStore internal constructor(
                 val latest = state.value
                 val base = persisted
                 if (latest !== base) {
-                    dataStore.edit { preferences -> preferences.putSettings(latest, base) }
+                    dataStore.edit { preferences ->
+                        preferences.putSettings(latest, base)
+                        if (preferences[SETTINGS_UNAVAILABLE] == true && latest != replacementDefaults) {
+                            preferences.remove(SETTINGS_UNAVAILABLE)
+                        }
+                    }
                     persisted = latest
                 }
             }

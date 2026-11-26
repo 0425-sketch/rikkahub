@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.sync
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerializationException
 import org.junit.Assert.assertEquals
@@ -11,6 +12,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
 
 class PendingRestoreTest {
     @get:Rule val temporary = TemporaryFolder()
@@ -147,6 +149,17 @@ class PendingRestoreTest {
         assertFalse(File(temporary.root, "restore/pending").exists())
     }
 
+    @Test fun cancellationRollsBackAndKeepsTheStagedRestoreForRestart() {
+        write(database(), "old database")
+        stage(restore())
+        assertThrows(CancellationException::class.java) {
+            runBlocking { restore().apply { throw CancellationException("interrupted") } }
+        }
+        assertEquals("old database", database().readText())
+        runBlocking { assertTrue(restore().apply {}) }
+        assertEquals("new database", database().readText())
+    }
+
     @Test fun filesOnlyRestoreLeavesDatabaseAndWalUntouched() = runBlocking {
         write(database(), "old database")
         write(File(database().path + "-wal"), "old wal")
@@ -166,11 +179,32 @@ class PendingRestoreTest {
     }
 
     @Test fun rejectsArchiveTraversalPaths() {
-        for (path in listOf("../database", "/absolute", "skills/../../database", "skills/..\\database")) {
+        for (path in listOf("../database", "/absolute", "skills/../../database", "skills/..\\database", "images//one.png")) {
             assertThrows(IllegalArgumentException::class.java) {
                 PendingRestore.resolveInside(temporary.root, path)
             }
         }
+    }
+
+    @Test fun linkedGalleryCannotRedirectRestoreIntoOtherPrivateFiles() {
+        val settings = write(File(temporary.root, "files/datastore/settings"), "original")
+        Files.createSymbolicLink(File(temporary.root, "files/images").toPath(), settings.parentFile.toPath())
+        val restore = restore()
+        val staging = restore.createStagingDirectory()
+        write(File(staging, "payload/files/images/settings"), "archived")
+        restore.publish(staging)
+        assertThrows(RestoreFailedException::class.java) { runBlocking { restore.apply {} } }
+        assertEquals("original", settings.readText())
+    }
+
+    @Test fun restoredFileCannotReplaceAnExistingDirectoryOfPictures() {
+        val picture = write(File(temporary.root, "files/images/gallery/photo.png"), "original picture")
+        val restore = restore()
+        val staging = restore.createStagingDirectory()
+        write(File(staging, "payload/files/images/gallery"), "archived file")
+        restore.publish(staging)
+        assertThrows(RestoreFailedException::class.java) { runBlocking { restore.apply {} } }
+        assertEquals("original picture", picture.readText())
     }
 
     private class SimulatedProcessDeath : Error()

@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.sync
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -74,6 +75,8 @@ internal class PendingRestore(
                 // Do not start the app with a partially restored database. Keep the journal for retry.
                 throw e
             }
+            // Cancellation interrupts installation. The rolled-back payload is still valid for retry.
+            if (e is CancellationException) throw e
             move(pending, File(root, "failed-${UUID.randomUUID()}"))
             throw RestoreFailedException(e)
         }
@@ -92,7 +95,9 @@ internal class PendingRestore(
             it.relativeTo(payload).invariantSeparatorsPath
         }.toList().sorted()
         val entries = paths.map { path ->
-            RestoreEntry(path, install = true, hadOriginal = targetFile(path).exists())
+            val target = targetFile(path)
+            require(!target.exists() || target.isFile) { "Restore target is not a regular file: $path" }
+            RestoreEntry(path, install = true, hadOriginal = target.exists())
         }.toMutableList()
         if (paths.contains("database/${databaseFile.name}")) {
             // The new database is standalone. Keep the old DB's sidecars with the old DB only.
@@ -137,12 +142,13 @@ internal class PendingRestore(
     companion object {
         fun resolveInside(root: File, relativePath: String): File {
             require(relativePath.isNotBlank() && !relativePath.startsWith('/') &&
-                '\\' !in relativePath && relativePath.split('/').none { it == ".." || it == "." }) {
+                '\\' !in relativePath && relativePath.split('/').none { it.isEmpty() || it == ".." || it == "." }) {
                 "Invalid backup file path: $relativePath"
             }
-            val target = File(root, relativePath).canonicalFile
-            require(target.path.startsWith(root.canonicalPath + File.separator)) {
-                "Backup file is outside its target directory"
+            val target = File(root.canonicalFile, relativePath)
+            // Also reject links into *other* private directories under filesDir, e.g. DataStore.
+            require(target == target.canonicalFile) {
+                "Backup file passes through a symbolic link: $relativePath"
             }
             return target
         }
