@@ -18,8 +18,8 @@ import urllib.request
 
 REPO = "0425-sketch/rikkahub"
 PACKAGE = "me.rerere.rikkahub.personal"
-VERSION_CODE = 208
-VERSION_NAME = "3.3.0-personal.8"
+VERSION_CODE = 209
+VERSION_NAME = "3.3.0-personal.9"
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
 
 
@@ -217,9 +217,9 @@ def main():
     notes = args.output / "release-notes.txt"
     notes.write_text(
         f"RikkaHub {VERSION_NAME}\n\n"
-        "修复「参考历史聊天记录」跨助手返回聊天片段的问题。现在每个助手只能检索自己的聊天记录，开启全局记忆也遵守这一范围。\n\n"
-        "旧会话找不到原助手时，接手的助手仍可继续聊天，但无法在该会话中调取自己的历史。用户主动选择「所有助手」仍可全局搜索，后台记忆整理继续按记忆库范围工作。\n\n"
-        "已安装自用版 207 的用户可从聊天侧栏下载本次更新，再按 Android 提示覆盖安装。\n\n"
+        "主界面打不开、还能进入安全模式时，可以把已保存的聊天、记忆、图片和设置导出为 ZIP，也可以从已有备份恢复。旧生图库中的原图现在也能随备份迁移。\n\n"
+        "普通备份和安全模式都会先校验备份包，完整写入所选文件后才提示成功。恢复数据库会整体替换聊天和记忆。恢复含设置的备份后，需要重新授权 ChatGPT。ZIP 可能含 API Key，请妥善保管。\n\n"
+        "已安装自用版 208 的用户可从聊天侧栏检查更新，下载后按 Android 提示覆盖安装。\n\n"
         f"[构建源码](https://github.com/{REPO}/commit/{source_sha}) · [构建记录]({metadata['actions_url']})\n\n"
         f"APK SHA-256 `{metadata['apk_sha256']}`\n\n"
         f"<!-- rikkahub-personal-version-code: {VERSION_CODE} -->\n",
