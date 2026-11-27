@@ -57,8 +57,9 @@ def start(fixture, extra=()):
     tap(uiwait(file_row))
     return proc
 def grant_install():
+    packages=set(shell('pm list packages').splitlines())
     for source in ['me.rerere.rikkahub.personal','com.android.documentsui','com.google.android.documentsui','com.android.providers.downloads.ui','com.android.providers.downloads']:
-        if shell('pm path '+source).startswith('package:'):shell('appops set '+source+' REQUEST_INSTALL_PACKAGES allow')
+        if 'package:'+source in packages:shell('appops set '+source+' REQUEST_INSTALL_PACKAGES allow')
 def install(code):
     expected=f'versionCode={code} '
     def step(ns):

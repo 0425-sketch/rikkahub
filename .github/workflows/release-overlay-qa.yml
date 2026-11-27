@@ -60,14 +60,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: bash tools/qa-overlay/wait_stage.sh
-      - name: Exercise update download, system replacement, data and usage growth
+      - name: Upgrade the seeded Debug 209 using its update drawer and the system installer
+        id: first
         run: |
           if [[ "$(cat "$RQA_CODE/mode")" == public ]]; then
             python -u tools/qa-overlay/flow.py public
           else
             bash tools/qa-overlay/ca.sh
             python -u tools/qa-overlay/flow.py controlled
-            python -u tools/qa-overlay/reject.py
+          fi
+      - name: Verify rejected payloads on installed Release 1
+        if: steps.first.outcome == 'success'
+        run: |
+          if [[ "$(cat "$RQA_CODE/mode")" != public ]]; then python -u tools/qa-overlay/reject.py; fi
+      - name: Upgrade installed Release 1 to the nonpublic successor and check its data
+        if: always() && steps.first.outcome == 'success'
+        run: |
+          if [[ "$(cat "$RQA_CODE/mode")" != public ]]; then
+            pkill -f "^python.*$RQA_DATA/origin/fixture.py" || true
+            adb shell settings put global http_proxy :0
+            adb shell settings delete global http_proxy
             python -u tools/qa-overlay/flow.py next
           fi
       - name: Collect synthetic acceptance snapshots
