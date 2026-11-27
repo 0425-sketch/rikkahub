@@ -181,7 +181,37 @@ def rescue():
         drawer_button=find(nodes,'Show roots') or find(nodes,'Show navigation drawer')
         if drawer_button:
             touch(drawer_button);tap('Downloads')
-    tap('qa-restoration.zip')
+    # Android 11 DocumentsUI uses a touch handler on the document row. Its title
+    # is a non-clickable child, and its preview icon opens a different action.
+    grid=screen()
+    toggle=find(grid,'List view')
+    if toggle: touch(toggle)
+    time.sleep(.8)
+    for operation in ('body','double','keyboard','long'):
+        nodes=screen()
+        if find(nodes,'Restart App'): break
+        confirm=find(nodes,'Open') or find(nodes,'Select')
+        if confirm and confirm.get('enabled')=='true': touch(confirm); continue
+        title=find(nodes,'qa-restoration.zip')
+        if title is None: break
+        x,y,r,b=map(int,re.findall(r'\d+',title['bounds']))
+        rects=[]
+        for n in nodes:
+            if not n.get('resource-id','').endswith('/item_root'): continue
+            left,top,right,bottom=map(int,re.findall(r'\d+',n['bounds']))
+            if left<=x<right and top<=y<bottom:
+                rects.append((left,top,right,bottom))
+        assert len(rects)==1,(title,rects)
+        left,top,right,bottom=rects[0]
+        # Stay in the center of the item's main surface, away from preview controls.
+        tx,ty=str((left+right)//2),str((top+bottom)//2)
+        print('Android picker',operation,rects[0],title['enabled'],flush=True)
+        if operation=='body': sh('input','tap',tx,ty)
+        if operation=='double': sh(f'input tap {tx} {ty}; input tap {tx} {ty}')
+        if operation=='keyboard':
+            sh('input','tap',tx,ty); key('KEYCODE_DPAD_CENTER')
+        if operation=='long': sh('input','swipe',tx,ty,tx,ty,'800')
+        time.sleep(1)
     tap('Restart App')
     time.sleep(1);launch();tap('Messages')
     wait('QA-Restored')
