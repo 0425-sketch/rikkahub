@@ -133,8 +133,8 @@ def export_backup():
     with zipfile.ZipFile(io.BytesIO(data)) as src:
         assert src.testzip() is None
         assert src.read('rikka_hub.db').startswith(b'SQLite format 3\x00')
-        settings=json.loads(src.read('settings.json'))
-        assert settings['displaySetting']['userNickname']=='QA-Synthetic'
+        saved_settings=json.loads(src.read('settings.json'))
+        assert saved_settings['displaySetting']['userNickname']=='QA-Synthetic'
         print('Normal ZIP contains settings, Room database and',len(src.namelist()),'entries',flush=True)
         image_paths=[p for p in src.namelist() if p.endswith('.png') and src.read(p)==PNG]
         if LOG.is_file() and 'openai-image-generation' in LOG.read_text():
@@ -145,8 +145,8 @@ def export_backup():
         with zipfile.ZipFile(recovered,'w',zipfile.ZIP_DEFLATED) as out:
             for name in src.namelist():
                 if name=='settings.json':
-                    settings['displaySetting']['userNickname']='QA-Restored'
-                    out.writestr(name,json.dumps(settings,ensure_ascii=False))
+                    saved_settings['displaySetting']['userNickname']='QA-Restored'
+                    out.writestr(name,json.dumps(saved_settings,ensure_ascii=False))
                 else: out.writestr(name,src.read(name))
     with tempfile.NamedTemporaryFile() as f:
         f.write(recovered.getvalue());f.flush(); adb('push',f.name,'/sdcard/Download/qa-restoration.zip')

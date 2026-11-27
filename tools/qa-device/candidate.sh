@@ -3,7 +3,7 @@ run=$(cat tools/qa-device/stage-run)
 sha=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)
 tag="qa-personal-$run-1"
 for i in {1..100}; do
-  if gh api "repos/$GH_REPO/releases/tags/$tag" | jq -e --arg sha "$sha" '.draft and .target_commitish == $sha and any(.assets[]; .name=="build-provenance.json")' > /dev/null; then break; fi
+  if gh release view "$tag" --json isDraft,targetCommitish,assets | jq -e --arg sha "$sha" '.isDraft and .targetCommitish == $sha and any(.assets[]; .name=="build-provenance.json")' > /dev/null; then break; fi
   gh api "repos/$GH_REPO/actions/runs/$run" --jq '.status + "-" + (.conclusion // "")' | grep -vE '^completed-(failure|cancelled)$'
   sleep 15
 done

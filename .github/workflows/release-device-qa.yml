@@ -12,6 +12,10 @@ jobs:
       matrix:
         apk: [baseline, candidate]
     runs-on: ubuntu-24.04
+    permissions:
+      # GitHub requires push visibility to read collaborator-only drafts.
+      contents: write
+      actions: read
     timeout-minutes: 70
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
