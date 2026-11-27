@@ -1,0 +1,107 @@
+name: Native usage tooltip from published APK
+on:
+  push:
+    branches: [qa/release-overlays-209]
+    paths: ['.github/workflows/release-official-stats-qa.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  overlays:
+    if: github.repository == '0425-sketch/rikkahub'
+    runs-on: ubuntu-24.04
+    permissions:
+      # Public channel verification runs anonymously. Checkout is read-only.
+      contents: read
+      actions: read
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          cmdline-tools-version: '16111833'
+          packages: build-tools;37.0.0 platform-tools emulator
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+      - name: Boot a disposable userdebug emulator with ARM64 support
+        run: |
+          set -eu
+          test -c /dev/kvm
+          sudo chmod 666 /dev/kvm
+          sdkmanager 'system-images;android-30;google_apis;x86_64'
+          echo no | avdmanager create avd -n rikkaoverlay -k 'system-images;android-30;google_apis;x86_64' -d pixel_2
+          "$ANDROID_HOME/emulator/emulator" -avd rikkaoverlay -no-window -no-audio -no-boot-anim -no-snapshot -writable-system -gpu swiftshader_indirect -accel on -memory 3072 > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          adb wait-for-device
+          timeout 420 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 3; done'
+          for i in {1..8}; do
+            adb root || true
+            sleep 2
+            adb wait-for-device
+            if [ "$(adb shell id -u | tr -d '\r')" = 0 ]; then break; fi
+          done
+          test "$(adb shell id -u | tr -d '\r')" = 0
+          adb shell input keyevent 82
+          adb shell wm size 720x1440
+          adb shell wm density 270
+          adb shell getprop ro.product.cpu.abilist | grep arm64-v8a
+          for scale in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global "$scale" 0; done
+          mkdir "$RUNNER_TEMP/overlay"
+          echo "RQA_DATA=$RUNNER_TEMP/overlay" >> "$GITHUB_ENV"
+          echo "RQA_CODE=$GITHUB_WORKSPACE/tools/qa-overlay" >> "$GITHUB_ENV"
+      - name: Seed chat, image, preferences, memory and local usage in the original APK
+        run: |
+          python -m pip install --quiet Pillow cryptography
+          bash tools/qa-overlay/file-manager.sh
+          bash tools/qa-overlay/seed.sh
+      - name: Open the actual public ARM64 APK and prepare known measured samples
+        run: |
+          tag=custom-3.3.0-personal-f7d267a21e9b-45947662246-1
+          apk=rikkahub-3.3.0-personal.10-f7d267a21e9b-arm64.apk
+          curl -fsSL --retry 3 "https://github.com/0425-sketch/rikkahub/releases/download/$tag/$apk" -o "$RQA_DATA/official.apk"
+          echo "58f6e3933dcbec20567e0eac812bbe1e5591da94dafd07c4d6e543f76b57f8fb  $RQA_DATA/official.apk" | sha256sum -c -
+          adb install -r "$RQA_DATA/official.apk"
+          cd "$RQA_CODE"
+          python -u - <<'PYTHON'
+          from flow import ready,chat
+          ready()
+          chat(False)
+          chat(False,missing=True)
+          chat(False)
+          PYTHON
+      - name: Read native message usage, generation speed and the Statistics menu
+        run: |
+          if ! command -v tesseract >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr; fi
+          cd "$RQA_CODE"
+          python -u - <<'PYTHON'
+          from stats_ui import usage,stats
+          errors=[]
+          for read in [usage,stats]:
+              try: read()
+              except Exception as exc: errors.append(repr(exc))
+          assert not errors, errors
+          PYTHON
+      - name: Collect synthetic acceptance snapshots
+        if: always()
+        run: |
+          adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' | head -5 || true
+          adb logcat -d -v brief | grep -Ei 'InstallStart|PackageInstaller|unknown source|cannot start|not allowed to|DocumentsUI|installing a package' | tail -65 || true
+          adb logcat -d -v brief 'AndroidRuntime:E' '*:S' | tail -25 || true
+          for f in "$RUNNER_TEMP"/overlay/snapshot-*.json "$RUNNER_TEMP/overlay/fixture.log" "$RUNNER_TEMP/overlay/provider.log"; do
+            test ! -f "$f" || tail -100 "$f"
+          done
+          adb shell uiautomator dump /sdcard/result-ui.xml >/dev/null 2>&1 && adb pull /sdcard/result-ui.xml "$RUNNER_TEMP/overlay/result-ui.xml" || true
+          adb exec-out screencap -p > "$RUNNER_TEMP/overlay/result-screen.png" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: disposable-overlay-evidence
+          path: |
+            ${{ runner.temp }}/overlay/snapshot-*.json
+            ${{ runner.temp }}/overlay/stats-ui.json
+            ${{ runner.temp }}/overlay/usage-details-*.png
+            ${{ runner.temp }}/overlay/result-ui.xml
+            ${{ runner.temp }}/overlay/result-screen.png
+            ${{ runner.temp }}/overlay/fixture.log
+          retention-days: 10
