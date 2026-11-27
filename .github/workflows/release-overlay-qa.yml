@@ -10,6 +10,11 @@ jobs:
   overlays:
     if: github.repository == '0425-sketch/rikkahub'
     runs-on: ubuntu-24.04
+    permissions:
+      # GitHub denies GET of an existing draft to a contents:read token (403).
+      # The token is passed only to the metadata/download step; no Release is mutated.
+      contents: write
+      actions: read
     timeout-minutes: 100
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
