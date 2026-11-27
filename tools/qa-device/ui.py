@@ -177,18 +177,32 @@ def configure_recovery_provider(data):
     adb('shell','run-as',app,'mkdir','-p','files')
     adb('shell','-T',f'run-as {app} sh -c "cat > files/archive.zip"',data=data)
     # On this disposable emulator, just the OPEN_DOCUMENT picker component is swapped.
-    sh('pm','disable-user','--user','0',stock)
-    selected=sh(resolve).splitlines()[-1]
-    assert app in selected,selected
+    for mode,component in [('disable',stock),('disable-user',stock.split('/')[0])]:
+        print('Disposable picker resolution',sh('pm',mode,'--user','0',component),flush=True)
+        selected=sh(resolve).splitlines()[-1]
+        print('Resolved recovery picker',selected,flush=True)
+        if app in selected: break
+    else:
+        raise AssertionError('Recovery picker not selected')
     print('Installed controlled OpenDocument handler for one recovery archive',flush=True)
 
 def rescue():
-    settings(); scrolltap('About this app')
-    for _ in range(4):
+    settings()
+    # Settle Settings' lazy list at its bottom. A row partly under the system nav
+    # bar still appears in UIAutomator's tree and cannot yet receive a touch.
+    for _ in range(8):
         nodes=screen()
-        if not find(nodes,'About this app'): break
-        # Ensure row is no longer still moving from a previous fling.
-        touch(find(nodes,'About this app'))
+        if find(nodes,'Share this app with friends'): break
+        sh('input','swipe','360','1110','360','420','480');pause()
+    for _ in range(6):
+        nodes=screen()
+        about=find(nodes,'About this app')
+        if about:
+            x,y,r,b=map(int,re.findall(r'\d+',about['bounds']))
+            sh('input','tap','110',str((y+b)//2))
+            time.sleep(.8)
+        elif find(nodes,'Version') or find(nodes,'System'): break
+        else: time.sleep(.6)
     scrolltap('Version',long=True)
     wait('Debug Mode')
     mark('About version long press opened Debug Mode on installed APK')
