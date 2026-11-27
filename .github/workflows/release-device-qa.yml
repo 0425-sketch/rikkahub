@@ -43,15 +43,12 @@ jobs:
           for scale in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global "$scale" 0; done
           adb shell getprop ro.product.cpu.abilist | grep arm64-v8a
       - name: Install and launch the original published Debug 209
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           cd "$RUNNER_TEMP"
           tag=custom-3.3.0-personal-590dca0ef8ca-45763808599-1
           apk=rikkahub-3.3.0-personal.9-590dca0ef8ca-arm64.apk
-          gh release download "$tag" -p "$apk"
+          curl -fsSL --retry 3 -o "$apk" "https://github.com/0425-sketch/rikkahub/releases/download/$tag/$apk"
           echo "de0657f2ee1d08e2ae9bac27ce8f36e67c7e9bf8ab3a4c57f2073d9e4f24af8b  $apk" | sha256sum -c -
           adb install "$apk"
           adb shell am start -W -n me.rerere.rikkahub.personal/me.rerere.rikkahub.RouteActivity

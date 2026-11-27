@@ -40,6 +40,7 @@ def seed():
               'media_generation_providers':[{'type':'openai_platform_images','name':'QA OpenAI Platform','apiKey':'qa-fixture','models':[{'modelId':'gpt-image-2.6-sunburst','kind':'IMAGE','displayName':'Mock image'}]}],
               'chat_model':MODEL,'fast_model':MODEL,'prompt_enhancement_model':MODEL, 'display_setting':{'userNickname':'QA-Synthetic','showTokenUsage':True},
               'webdav_config':{'items':['DATABASE','FILES']}}
+    fields['providers'].append({'type':'chatgpt','id':'abc00000-0000-4000-8000-000000000003','name':'QA SIWC'})
     entries = []
     for name,value in fields.items():
         val=field(5,(value if isinstance(value,str) else json.dumps(value)).encode())

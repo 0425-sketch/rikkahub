@@ -87,10 +87,12 @@ def settings():
         for node in nodes:
             if node.get('clickable')!='true': continue
             x,y,r,b=map(int,re.findall(r'\d+',node['bounds']))
-            if x>=sr and y<=(sy+sb)//2<=b:
+            if x>=sr and y<=(sy+sb)//2<=b and r-x<=110 and b-y<=110:
                 matches.append((x,node))
+        print('Drawer controls',[(n['bounds'],n.get('content-desc'),n.get('text')) for n in nodes if n.get('clickable')=='true' or n.get('content-desc')],flush=True)
         assert matches,[(n['bounds'],n.get('clickable')) for n in nodes]
         item=max(matches,key=lambda entry:entry[0])[1]
+    print('Settings control',item['bounds'],flush=True)
     touch(item)
     wait('Settings')
 
@@ -99,6 +101,20 @@ def event(label):
         if LOG.is_file() and any(json.loads(row)['event']==label for row in LOG.read_text().splitlines()): return
         time.sleep(.3)
     raise AssertionError('Missing fixture HTTP request '+label)
+def siwc():
+    settings()
+    scrolltap('Providers')
+    scrolltap('QA SIWC')
+    scrolltap('Continue with ChatGPT')
+    # Inspect the Android launch without logging OAuth parameters or using credentials.
+    time.sleep(2)
+    first = adb('shell','dumpsys','activity','activities')
+    system_log = adb('shell','logcat','-d','-b','system','-s','ActivityTaskManager:I','*:S')
+    assert b'auth.openai.com' in first + system_log, 'No system launch for the expected OAuth host'
+    host_path='/data/user/0/'+PKG+'/no_backup/chatgpt-host-id'
+    assert re.fullmatch(r'urn:uuid:[0-9a-f-]{36}',sh('cat',host_path)), 'Missing local SIWC installation ID'
+    mark('SIWC built the local installation identity and launched the authorization browser, with no sign-in')
+
 def prompt():
     drawer(); tap('Chat prompt enhancement')
     edit('rewrite synthetic text')
@@ -176,7 +192,7 @@ if __name__=='__main__':
     assert sh('getprop','ro.kernel.qemu.avd_name')=='release_qa'
     try:
         failed=[]
-        for step in (prompt,media,export_backup,rescue):
+        for step in (prompt,media,siwc,export_backup,rescue):
             print('Running',step.__name__,flush=True)
             try:
                 step()
