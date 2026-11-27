@@ -1,7 +1,12 @@
 """Read signed Release 1's native message and Statistics accessibility labels on the fresh AVD."""
 import json
 import re
-from flow import PKG, P, chat, confirm, first, label, nodes, shell, summary, tap, time, uiwait
+import io
+import shutil
+import subprocess
+from xml.etree import ElementTree as ET
+from PIL import Image
+from flow import PKG, P, adb, chat, confirm, first, label, nodes, shell, summary, tap, time, uiwait
 
 evidence = {}
 def observe(key):
@@ -44,12 +49,35 @@ def usage():
         time.sleep(.5)
     assert '140 ctx' in labels and '(30 cached)' in labels, labels
     assert any(re.search(r'\d+(?:\.\d+)? tok/s', item) for item in labels), labels
-    row = [n for n in nodes() if label(n) == '140 ctx'][-1]
-    tap(row)
-    uiwait(lambda ns: first(ns, lambda s: s == 'Cached 30'), 12)
-    details = observe('message_usage_details')
-    assert all(s in details for s in ('Cached 30', 'Input 90', 'Output 20')), details
-    assert any('140' in s for s in details), details
+    # RichTooltip uses a non-focusable popup. On API 30 an active-window-only UIAutomator
+    # dump can continue to show the underlying chat even while the detailed chips are visible.
+    candidates=[n for n in nodes() if label(n) == '140 ctx']
+    details = []
+    for idx,node in enumerate(reversed(candidates)):
+        tap(node)
+        time.sleep(.5)
+        shot=P/f'usage-details-{idx}.png'
+        shot.write_bytes(adb('exec-out','screencap','-p',text=False))
+        bitmap=Image.open(shot).convert('RGB')
+        buff=io.BytesIO()
+        bitmap.resize((bitmap.width*2,bitmap.height*2)).save(buff,format='PNG')
+        ocr=subprocess.run(['tesseract','stdin','stdout','--psm','6'],input=buff.getvalue(),
+                            stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,check=True).stdout.decode()
+        evidence['message_usage_ocr_'+str(idx)]=ocr.splitlines()
+        print('Tooltip screen OCR',repr(ocr),flush=True)
+        raw=shell('uiautomator dump --windows /sdcard/usage-all.xml >/dev/null 2>&1 && cat /sdcard/usage-all.xml')
+        try: details=summary(list(ET.fromstring(raw).iter('node')))
+        except ET.ParseError: details=summary(nodes())
+        evidence['message_usage_all_windows_'+str(idx)]=details
+        (P / 'stats-ui.json').write_text(json.dumps(evidence,ensure_ascii=False,indent=2))
+        print('Tooltip window labels',json.dumps(details,ensure_ascii=False),flush=True)
+        text=' '.join(details)+' '+ocr
+        if all(re.search(r'\b'+key+r'\s*'+number+r'\b',text,re.I)
+               for key,number in [('Cached','30'),('Input','90'),('Output','20')]):
+            return
+        shell('input tap 702 1270')
+        time.sleep(.5)
+    raise AssertionError('Could not read the three native tooltip token amounts')
 
 def stats():
     # Use a fresh normal launch to dismiss a tooltip or diagnostic screen.

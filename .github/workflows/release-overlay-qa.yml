@@ -68,7 +68,9 @@ jobs:
           fi
       - name: Read message token breakdown, speed and Statistics totals on installed Release 1
         if: steps.first.outcome == 'success'
-        run: python -u tools/qa-overlay/stats_ui.py
+        run: |
+          if ! command -v tesseract >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr; fi
+          python -u tools/qa-overlay/stats_ui.py
       - name: Collect synthetic acceptance snapshots
         if: always()
         run: |
@@ -87,6 +89,7 @@ jobs:
           path: |
             ${{ runner.temp }}/overlay/snapshot-*.json
             ${{ runner.temp }}/overlay/stats-ui.json
+            ${{ runner.temp }}/overlay/usage-details-*.png
             ${{ runner.temp }}/overlay/result-ui.xml
             ${{ runner.temp }}/overlay/result-screen.png
             ${{ runner.temp }}/overlay/fixture.log
