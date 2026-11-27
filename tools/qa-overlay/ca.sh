@@ -11,6 +11,7 @@ adb shell 'cp -a /system/etc/security/cacerts/. /data/local/tmp/fixture-system-c
 adb push offline-fixture-ca.crt "/data/local/tmp/fixture-system-certs/$hash.0"
 adb shell "chmod 644 /data/local/tmp/fixture-system-certs/$hash.0 && chown root:root /data/local/tmp/fixture-system-certs/$hash.0 && chcon u:object_r:system_file:s0 /data/local/tmp/fixture-system-certs/$hash.0"
 # API 30 has the system Conscrypt trust store (no Android 14 APEX namespaces).
+adb shell 'chmod 755 /data/local/tmp/fixture-system-certs && chcon -R u:object_r:system_file:s0 /data/local/tmp/fixture-system-certs'
 adb shell 'mount --bind /data/local/tmp/fixture-system-certs /system/etc/security/cacerts'
 adb shell "test -r /proc/1/root/system/etc/security/cacerts/$hash.0"
 adb shell 'am force-stop com.android.providers.downloads'

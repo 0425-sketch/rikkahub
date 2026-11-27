@@ -1,4 +1,18 @@
 set -euo pipefail
+if [[ "$(cat "$RQA_CODE/mode")" == public ]]; then
+  mkdir -p "$RQA_DATA/stage"
+  curl -fsSL "https://api.github.com/repos/0425-sketch/rikkahub/releases/latest" -o "$RQA_DATA/latest.json"
+  jq -e '.name=="RikkaHub Release 209（Release 1）" and .draft==false and .prerelease==false' "$RQA_DATA/latest.json"
+  for name in build-provenance.json apk; do
+    url=$(jq -r --arg name "$name" '.assets[]|select((.name==$name) or ($name=="apk" and (.name|endswith("-arm64.apk"))))|.browser_download_url' "$RQA_DATA/latest.json")
+    dest=$name
+    if [[ $name == apk ]]; then dest=primary.apk; fi
+    curl -fsSL --retry 3 "$url" -o "$RQA_DATA/stage/$dest"
+  done
+  hash=$(jq -er '.apk_sha256' "$RQA_DATA/stage/build-provenance.json")
+  echo "$hash  $RQA_DATA/stage/primary.apk" | sha256sum -c -
+  exit 0
+fi
 run=$(cat "$RQA_CODE/build-run")
 tag="qa-personal-$run-1"
 sha=$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)

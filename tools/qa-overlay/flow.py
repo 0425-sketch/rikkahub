@@ -39,7 +39,9 @@ def start(fixture):
         k=first(ns,lambda x:x.lower() in ('confirm','ok','while using the app','allow','got it'))
         if k is not None:tap(k)
         elif not any('MIGRATION-209' in x for x in summary(ns)):
-            shell('input keyevent 82');shell('input swipe 2 700 660 700 350')
+            menu=first(ns,lambda x:x=='Messages')
+            if menu is not None:tap(menu)
+            else:shell('input swipe 48 700 660 700 350')
         return None
     tap(uiwait(card,110))
     def file_row(ns):
@@ -113,3 +115,10 @@ if __name__=='__main__':
     a=json.loads((P/f'snapshot-{code}-before.json').read_text())
     b=json.loads((P/f'snapshot-{code}-after.json').read_text())
     assert len(b['usage_rows'])==len(a['usage_rows'])+1 and b['messages']==a['messages']+2
+
+    if code==210:
+        chat(False,missing=True)
+        sys.argv[-1]=str(code)+'-missing'
+        capture()
+        partial=json.loads((P/f'snapshot-{code}-missing.json').read_text())
+        assert partial['usage_rows'][-1]=='77|0|0|1|0'
