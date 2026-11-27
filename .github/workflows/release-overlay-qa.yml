@@ -46,9 +46,37 @@ jobs:
         run: |
           python -m pip install --quiet Pillow cryptography
           bash tools/qa-overlay/seed.sh
+      - name: Fetch exact signed candidates for the selected run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tools/qa-overlay/wait_stage.sh
+      - name: Exercise update download, system replacement, data and usage growth
+        run: |
+          if [[ "$(cat "$RQA_CODE/mode")" == public ]]; then
+            python -u tools/qa-overlay/flow.py public
+          else
+            bash tools/qa-overlay/ca.sh
+            python -u tools/qa-overlay/flow.py controlled
+            python -u tools/qa-overlay/flow.py next
+          fi
       - name: Collect synthetic acceptance snapshots
         if: always()
         run: |
           adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' | head -5 || true
           adb logcat -d -v brief 'AndroidRuntime:E' '*:S' | tail -50 || true
-          test ! -f "$RUNNER_TEMP/overlay/snapshot-209.json" || cat "$RUNNER_TEMP/overlay/snapshot-209.json"
+          for f in "$RUNNER_TEMP"/overlay/snapshot-*.json "$RUNNER_TEMP/overlay/fixture.log" "$RUNNER_TEMP/overlay/provider.log"; do
+            test ! -f "$f" || tail -100 "$f"
+          done
+          adb shell uiautomator dump /sdcard/result-ui.xml >/dev/null 2>&1 && adb pull /sdcard/result-ui.xml "$RUNNER_TEMP/overlay/result-ui.xml" || true
+          adb exec-out screencap -p > "$RUNNER_TEMP/overlay/result-screen.png" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: disposable-overlay-evidence
+          path: |
+            ${{ runner.temp }}/overlay/snapshot-*.json
+            ${{ runner.temp }}/overlay/result-ui.xml
+            ${{ runner.temp }}/overlay/result-screen.png
+            ${{ runner.temp }}/overlay/fixture.log
+          retention-days: 10
