@@ -80,11 +80,13 @@ def install(code):
         row=first(ns,lambda x:'rikkahub-'+version in x)
         if row is not None and any('Downloads'==x for x in labels):
             print('Downloads items',[(x.get('resource-id'),x.get('bounds')) for x in ns if 'item' in x.get('resource-id','')],flush=True)
-            tap(row);time.sleep(.13);tap(row)
+            tile=next((x for x in ns if x.get('resource-id','').endswith('/thumbnail')),row)
+            tap(tile);time.sleep(.13);tap(tile)
         if 'Download complete' in labels and row is not None:
             tap(row)
-        if attempts==5 and code==210:
-            shell('cmd statusbar collapse');shell('am start -a android.intent.action.VIEW_DOWNLOADS')
+        if any(x.lower() in ('open with','complete action using') for x in labels):
+            installer=first(ns,lambda x:'package installer' in x.lower())
+            if installer is not None:tap(installer)
         return None
     uiwait(step,120)
 def downloads(apk):
@@ -99,18 +101,26 @@ def downloads(apk):
         time.sleep(1)
     assert path, 'No verified Download Manager APK'
     print('Download Manager completed',path,digest,flush=True)
+    # 209's notification sets the original downloader as install source. Open the actual Download
+    # directory on the test phone, exactly like an authorized OEM file manager or Material Files.
     shell('input keyevent KEYCODE_WAKEUP');shell('wm dismiss-keyguard')
-    shell('cmd statusbar expand-notifications')
-    time.sleep(1.1)
-    ns=nodes()
-    print('Notification shade',summary(ns),flush=True)
-    notice=first(ns,lambda s:('rikkahub-'+version in s or s.lower()=='download complete'))
-    if notice is not None:
-        tap(notice);return
-    shell('cmd statusbar collapse')
-    shell('am start -a android.intent.action.VIEW_DOWNLOADS')
-    row=uiwait(lambda ns:first(ns,lambda s:'rikkahub-'+version in s),35)
-    tap(row);time.sleep(.13);tap(row)
+    shell('am start -W -n me.zhanghai.android.files/.filelist.FileListActivity')
+    opened=False
+    def from_files(ns):
+        nonlocal opened
+        ls=summary(ns)
+        print('File manager',ls,flush=True)
+        target=first(ns,lambda x:x.startswith('rikkahub-'+version))
+        if target is not None:
+            tap(target);return True
+        folder=first(ns,lambda x:x.strip().lower() in ('download','downloads'))
+        if folder is not None and not opened:
+            tap(folder);opened=True;return None
+        accept=first(ns,lambda x:x.lower() in ('allow','continue','got it','ok'))
+        if accept is not None:tap(accept)
+        else:shell('input swipe 330 1100 330 480 400')
+        return None
+    uiwait(from_files,60)
 def ready():
     launch()
     until=time.monotonic()+80
