@@ -67,6 +67,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: bash tools/qa-device/candidate.sh
       - name: Run the feature controls on the installed APK
+        env:
+          QA_TARGET: ${{ matrix.apk }}
         run: python3 -u tools/qa-device/ui.py
       - name: Retain synthetic UI evidence
         if: always()

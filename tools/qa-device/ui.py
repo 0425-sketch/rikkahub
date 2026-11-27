@@ -73,6 +73,7 @@ def drawer():
     launch()
     tap('Messages')
     wait('QA-Synthetic')
+    if os.environ.get('QA_TARGET')=='candidate': assert find(screen(),'[开发模式]') is None
 def settings():
     drawer()
     nodes=screen()
@@ -166,7 +167,7 @@ def export_backup():
         f.write(recovered.getvalue());f.flush(); adb('push',f.name,'/sdcard/Download/qa-restoration.zip')
     mark('Normal local export read back with settings and Room data')
 def rescue():
-    settings(); scrolltap('About'); touch(wait('Version'),long=True)
+    settings(); scrolltap('About this app'); scrolltap('Version',long=True)
     wait('Debug Mode')
     mark('About version long press opened Debug Mode on installed APK')
     scrolltap('崩溃')
