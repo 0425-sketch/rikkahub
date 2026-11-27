@@ -49,3 +49,18 @@ jobs:
           adb shell am start -W -n me.rerere.rikkahub.personal/me.rerere.rikkahub.RouteActivity
           adb shell dumpsys package me.rerere.rikkahub.personal | grep -E 'versionCode=|versionName=|primaryCpuAbi='
           adb shell pidof me.rerere.rikkahub.personal
+      - name: Prepare synthetic data and isolated model fixture
+        run: |
+          python3 tools/qa-device/fixture.py seed
+          python3 -u tools/qa-device/fixture.py serve > "$RUNNER_TEMP/fixture-server.log" 2>&1 &
+      - name: Run the feature controls on the installed APK
+        run: python3 -u tools/qa-device/ui.py
+      - name: Retain synthetic UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-device-evidence
+          path: |
+            ${{ runner.temp }}/device-results
+            ${{ runner.temp }}/fixture-events.jsonl
+          if-no-files-found: ignore
