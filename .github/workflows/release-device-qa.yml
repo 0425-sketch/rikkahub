@@ -13,12 +13,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          cmdline-tools-version: '16111833'
+          packages: platform-tools
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
       - name: Boot an isolated Google APIs emulator
         run: |
           set -eu
           test -c /dev/kvm
           sudo chmod 666 /dev/kvm
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'emulator' 'platform-tools' 'system-images;android-30;google_apis;x86_64'
           echo no | avdmanager create avd -n release_qa -k 'system-images;android-30;google_apis;x86_64' -d pixel_2
           "$ANDROID_HOME/emulator/emulator" -avd release_qa -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on -memory 2304 > "$RUNNER_TEMP/emulator.log" 2>&1 &
