@@ -31,9 +31,13 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -avd rikkaoverlay -no-window -no-audio -no-boot-anim -no-snapshot -writable-system -gpu swiftshader_indirect -accel on -memory 3072 > "$RUNNER_TEMP/emulator.log" 2>&1 &
           adb wait-for-device
           timeout 420 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 3; done'
-          adb root
-          adb wait-for-device
-          adb shell id -u | grep -x 0
+          for i in {1..8}; do
+            adb root || true
+            sleep 2
+            adb wait-for-device
+            if [ "$(adb shell id -u | tr -d '\r')" = 0 ]; then break; fi
+          done
+          test "$(adb shell id -u | tr -d '\r')" = 0
           adb shell input keyevent 82
           adb shell wm size 720x1440
           adb shell wm density 270

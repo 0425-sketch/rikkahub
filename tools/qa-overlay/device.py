@@ -11,7 +11,7 @@ def adb(*args, data=None, text=True):
 def shell(s): return adb('shell',s)
 def confirm():
     assert shell('getprop ro.kernel.qemu')=='1'
-    assert shell('getprop ro.kernel.qemu.avd_name')=='rikkaoverlay'
+    assert 'rikkaoverlay' in adb('emu','avd','name').splitlines()
 def launch(): print(shell('am start -n '+PKG+'/me.rerere.rikkahub.RouteActivity'))
 def wireint(n):
     out=bytearray()
@@ -46,6 +46,9 @@ def seed_preferences():
     assert 'versionCode=209 ' in shell('dumpsys package '+PKG)
     shell('am force-stop '+PKG)
     path='files/datastore/settings.preferences_pb'
+    marker=b'urn:uuid:00000000-0000-4000-8000-000000000209'
+    adb('shell','-T',f'run-as {PKG} sh -c "mkdir -p no_backup && cat > no_backup/chatgpt-host-id"',data=marker)
+    assert adb('exec-out','run-as',PKG,'cat','no_backup/chatgpt-host-id',text=False)==marker
     raw=adb('exec-out','run-as',PKG,'cat',path,text=False)
     obj=prefs(raw)
     model='eee00000-0000-4000-8000-000000000002'
