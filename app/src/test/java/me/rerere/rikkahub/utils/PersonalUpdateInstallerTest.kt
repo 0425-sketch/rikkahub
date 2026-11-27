@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.Signature
+import android.content.pm.SigningInfo
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertThrows
@@ -12,12 +13,13 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.security.MessageDigest
 import java.security.cert.CertificateFactory
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [27], application = Application::class)
+@Config(sdk = [35], application = Application::class)
 @Suppress("DEPRECATION")
 class PersonalUpdateInstallerTest {
     @get:Rule val tmp = TemporaryFolder()
@@ -34,12 +36,16 @@ class PersonalUpdateInstallerTest {
         }
     }
 
+    private fun signers(vararg signatures: Signature) = SigningInfo().apply {
+        shadowOf(this).setSignatures(arrayOf(*signatures))
+    }
+
     private fun archive(code: Int) = PackageInfo().apply {
         packageName = PersonalReleaseFeed.APPLICATION_ID
         versionCode = code
         versionName = release.versionName
         applicationInfo = ApplicationInfo()
-        signatures = arrayOf(Signature(certificate))
+        signingInfo = signers(Signature(certificate))
     }
 
     @Test
@@ -48,9 +54,9 @@ class PersonalUpdateInstallerTest {
         release.checkArchive(archive(211), installed)
         val invalid = listOf(
             archive(211).apply { packageName = "me.rerere.rikkahub" },
-            archive(211).apply { signatures = arrayOf(Signature(byteArrayOf(9))) },
-            archive(211).apply { signatures = emptyArray() },
-            archive(211).apply { signatures = arrayOf(Signature(certificate), Signature(byteArrayOf(9))) },
+            archive(211).apply { signingInfo = signers(Signature(byteArrayOf(9))) },
+            archive(211).apply { signingInfo = signers() },
+            archive(211).apply { signingInfo = signers(Signature(certificate), Signature(byteArrayOf(9))) },
             archive(211).apply { applicationInfo!!.flags = ApplicationInfo.FLAG_DEBUGGABLE },
             archive(211).apply { versionName = "3.3.0-personal.12" },
             archive(210),

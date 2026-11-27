@@ -234,7 +234,7 @@ jobs:
         if grep -Eq '^[[:space:]]*-(dontshrink|dontoptimize)([[:space:]]|$)' "$mapping/configuration.txt"; then exit 1; fi
         unset ANDROID_SDK_HOME
         ./gradlew --no-daemon --no-configuration-cache :app:dependencies --configuration githubReleaseRuntimeClasspath --console=plain > "work/$ROLE/runtime-$ROLE.txt"
-        manifest=app/build/intermediates/merged_manifest/githubRelease/processGithubReleaseMainManifest/AndroidManifest.xml
+        manifest=app/build/intermediates/merged_manifests/githubRelease/processGithubReleaseManifest/arm64-v8a/AndroidManifest.xml
         test -s "$manifest"
         python3 tools/verify-release-runtime.py --apk "$apk" --merged-manifest "$manifest" --runtime-dependencies "work/$ROLE/runtime-$ROLE.txt" --build-tools "$tools"
     - name: Build the nonpublic successor for the second upgrade
