@@ -2,10 +2,14 @@ package me.rerere.rikkahub.utils
 
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.os.Environment
 import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -14,10 +18,12 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import kotlinx.serialization.json.Json
 import me.rerere.common.http.await
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.BuildConfig
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -26,13 +32,27 @@ import kotlin.time.Duration.Companion.minutes
 
 private const val API_URL = "https://updates.rikka-ai.com/"
 
+private val githubHosts = setOf("api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com")
+
+internal fun HttpUrl.isGithubUpdateUrl(): Boolean =
+    isHttps && port == 443 && host in githubHosts && username.isEmpty() && password.isEmpty()
+
 class UpdateChecker(
     private val client: OkHttpClient,
     appScope: AppScope,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val personal = BuildConfig.APPLICATION_ID == "me.rerere.rikkahub.personal"
+    internal val personal = BuildConfig.APPLICATION_ID == PersonalReleaseFeed.APPLICATION_ID
+    private val updateClient = if (personal) client.newBuilder()
+        .followSslRedirects(false)
+        .addNetworkInterceptor { chain ->
+            val request = chain.request()
+            if (!request.url.isGithubUpdateUrl()) throw IOException("Unexpected update host")
+            chain.proceed(request)
+        }
+        .build() else client
+    private val downloadMutex = Mutex()
     private var nextCheckAt = 0L
 
     val updateState: StateFlow<UiState<UpdateInfo>> = flow {
@@ -64,7 +84,7 @@ class UpdateChecker(
                 version = release.versionName,
                 publishedAt = release.publishedAt,
                 changelog = release.changelog,
-                downloads = listOf(UpdateDownload(release.apkName, release.apkUrl, release.apkSize.fileSizeToString())),
+                downloads = listOf(UpdateDownload(release.apkName, release.apkUrl, release.apkSize.fileSizeToString(), release)),
             )
         }
 
@@ -77,13 +97,29 @@ class UpdateChecker(
             .url(url)
             .header("User-Agent", "RikkaHub ${BuildConfig.VERSION_NAME} #${BuildConfig.VERSION_CODE}")
             .build()
-        return client.newCall(request).await().use { response ->
+        return updateClient.newCall(request).await().use { response ->
             if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
             response.body.string()
         }
     }
 
+    internal suspend fun personalInstaller(context: Context, download: UpdateDownload): Intent = withContext(Dispatchers.IO) {
+        check(personal)
+        val release = requireNotNull(download.personalRelease)
+        downloadMutex.withLock {
+            preparePersonalInstall(context, release) { target ->
+                val request = Request.Builder().url(release.apkUrl).build()
+                updateClient.newCall(request).await().use { response ->
+                    if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
+                    release.saveVerifiedBytes(response.body.byteStream(), target)
+                }
+            }
+        }
+    }
+
     fun downloadUpdate(context: Context, download: UpdateDownload): Boolean {
+        if (personal) return false
+
         val result = runCatching {
             val request = DownloadManager.Request(download.url.toUri()).apply {
                 setTitle(download.name)
@@ -93,16 +129,18 @@ class UpdateChecker(
             }
             checkNotNull(context.getSystemService(DownloadManager::class.java)).enqueue(request)
         }
-        if (!personal && result.isFailure) context.openUrl(download.url)
+        if (result.isFailure) context.openUrl(download.url)
         return result.isSuccess
     }
 }
 
 @Serializable
-data class UpdateDownload(
+@ConsistentCopyVisibility
+data class UpdateDownload internal constructor(
     val name: String,
     val url: String,
-    val size: String
+    val size: String,
+    @Transient internal val personalRelease: PersonalReleaseUpdate? = null,
 )
 
 @Serializable

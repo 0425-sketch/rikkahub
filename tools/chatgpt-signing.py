@@ -437,7 +437,7 @@ def main():
     if args.command == "restore":
         # Artifact-only builds can recover the pinned signer, but cannot provision,
         # replace, or retire any stored secret. Keep this a single exact branch.
-        allowed_refs.add("refs/heads/build/personal-3.3.0")
+        allowed_refs.add("refs/heads/migration/release-209")
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != REPO or os.environ.get("GITHUB_REF") not in allowed_refs:
         fail("ENVIRONMENT", "Signer commands require this repository's authorized Actions branch; the artifact branch permits restoration only.")
     identity = read_identity(args.identity, require_certificate=args.command != "bootstrap")

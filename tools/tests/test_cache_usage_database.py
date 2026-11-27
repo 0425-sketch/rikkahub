@@ -76,6 +76,16 @@ class CacheUsageDatabaseTest(unittest.TestCase):
         self.assertEqual(0, row["cacheRatePromptTokens"])
         self.assertIsNone(row["cacheWriteTokens"])
 
+    def test_missing_output_in_new_row_keeps_history_and_excludes_ambiguous_zero(self):
+        self.db.execute("INSERT INTO usage_record VALUES (3, 3, 300, 0, 0, 1, 0, NULL)")
+        row = self.db.execute(actual_totals_query(), {"since": 0}).fetchone()
+        self.assertEqual(3, row["requestCount"])
+        self.assertEqual(20, row["completionTokens"])
+        self.assertEqual(2, row["completionKnownRequestCount"])
+        self.assertEqual(2, row["totalKnownRequestCount"])
+        only_new = self.db.execute(actual_totals_query(), {"since": 3}).fetchone()
+        self.assertEqual(0, only_new["completionKnownRequestCount"])
+
     def test_empty_scope_has_no_known_zero_sample(self):
         row = self.db.execute(actual_totals_query(), {"since": 999}).fetchone()
         self.assertEqual(0, row["requestCount"])

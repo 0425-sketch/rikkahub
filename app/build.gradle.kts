@@ -1,7 +1,5 @@
 import com.android.build.api.dsl.Packaging
 import com.android.build.api.variant.BuildConfigField
-import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
-import com.google.gms.googleservices.GoogleServicesTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.FileInputStream
@@ -12,8 +10,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
-    alias(libs.plugins.google.services)
-    alias(libs.plugins.firebase.crashlytics)
     alias(libs.plugins.baselineprofile)
 }
 
@@ -41,7 +37,7 @@ val verifyPersonalSigning = tasks.register("verifyPersonalSigning") {
 
 // Keep normal JVM compilation/tests available without a signer; guard only APK/AAB production.
 tasks.configureEach {
-    if (name in setOf("packageGithubDebug", "packageGithubDebugBundle", "signGithubDebugBundle", "assembleGithubDebug", "bundleGithubDebug")) {
+    if (name in setOf("packageGithubRelease", "packageGithubReleaseBundle", "signGithubReleaseBundle", "assembleGithubRelease", "bundleGithubRelease")) {
         dependsOn(verifyPersonalSigning)
     }
 }
@@ -84,7 +80,7 @@ android {
         // Fixed personal signing is restored from durable Actions secrets before release builds.
         // Local compile/test tasks do not need a signer; personal APK creation is guarded above.
         providers.environmentVariable("CHATGPT_TEST_KEYSTORE").orNull?.takeIf(String::isNotBlank)?.let { keystorePath ->
-            create("chatgptTest") {
+            create("personal") {
                 storeFile = file(keystorePath)
                 storePassword = providers.environmentVariable("CHATGPT_TEST_STORE_PASSWORD").get()
                 keyAlias = providers.environmentVariable("CHATGPT_TEST_KEY_ALIAS").get()
@@ -117,7 +113,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            isDebuggable = false
             optimization {
                 enable = true
             }
@@ -126,27 +122,23 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
-            // Select signing per variant below so personal builds never create a debug key.
-            signingConfig = null
-            configure<CrashlyticsExtension> {
-                mappingFileUploadEnabled = false
-                nativeSymbolUploadEnabled = false
-            }
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
     }
-    // 按分发渠道区分：github 是 GitHub Release / 每日构建的 APK，play 是上架 Google Play 的 AAB
-    // 两个渠道共用同一个 applicationId，Play 版不能自更新，相关入口通过 BuildConfig.IS_PLAY_STORE 关闭
+    // The Release signer comes from the distribution flavor. Development builds use the
+    // debug build type's own signer and application ID suffix.
     flavorDimensions += "distribution"
     productFlavors {
         create("github") {
             dimension = "distribution"
             isDefault = true
+            if (!personalUnsigned) signingConfig = signingConfigs.findByName("personal")
             buildConfigField("boolean", "IS_PLAY_STORE", "false")
         }
         create("play") {
             dimension = "distribution"
+            signingConfig = signingConfigs.getByName("release")
             buildConfigField("boolean", "IS_PLAY_STORE", "true")
         }
     }
@@ -209,14 +201,6 @@ android {
     }
 }
 
-// Personal debug builds do not initialize Firebase or need a Firebase project config.
-// Release variants still require their real google-services.json.
-tasks.withType<GoogleServicesTask>().configureEach {
-    if (name.endsWith("DebugGoogleServices")) {
-        enabled = false
-    }
-}
-
 // 两个渠道的启动路径一样，profile 合并到 src/main 共用，不按变体各存一份
 baselineProfile {
     mergeIntoMain = true
@@ -225,28 +209,22 @@ baselineProfile {
 // baselineprofile 插件按 release 复制出 nonMinifiedRelease 时只关掉 isMinifyEnabled，关不掉 optimization，
 // 不手动关的话生成用的包会被 R8 内联、合并类，profile 里记下的是优化后的类和方法
 androidComponents {
-    onVariants(selector().withBuildType("debug").withFlavor("distribution" to "github")) { variant ->
-        // A distinct identity keeps the previously installed app and all of its data intact.
-        // Durable signing and two clean restore builds are required before publication.
+    onVariants(selector().withBuildType("release").withFlavor("distribution" to "github")) { variant ->
+        // Continue the installed personal Debug 209 identity on the optimized Release.
         variant.applicationId.set("me.rerere.rikkahub.personal")
-        val personalVersionCode = 209
-        val personalVersionName = "3.3.0-personal.9"
+        val baseCode = providers.gradleProperty("personalVersionCode").get().toInt()
+        val baseName = providers.gradleProperty("personalVersionName").get()
+        val nextCandidate = providers.gradleProperty("personalNextCandidate").map(String::toBooleanStrict).getOrElse(false)
+        val personalVersionCode = if (nextCandidate) baseCode + 1 else baseCode
+        val personalVersionName = if (nextCandidate) {
+            baseName.substringBeforeLast('.') + "." + (baseName.substringAfterLast('.').toInt() + 1)
+        } else baseName
         variant.outputs.forEach { output ->
             output.versionCode.set(personalVersionCode)
             output.versionName.set(personalVersionName)
         }
         variant.buildConfigFields?.put("VERSION_NAME", BuildConfigField("String", "\"$personalVersionName\"", null))
         variant.buildConfigFields?.put("VERSION_CODE", BuildConfigField("String", "\"$personalVersionCode\"", null))
-        if (!personalUnsigned) {
-            android.signingConfigs.findByName("chatgptTest")?.let { signingConfig ->
-                checkNotNull(variant.signingConfig) { "AGP did not expose signing configuration for the personal APK." }
-                    .from(signingConfig)
-            }
-        }
-    }
-    onVariants(selector().withBuildType("debug").withFlavor("distribution" to "play")) { variant ->
-        checkNotNull(variant.signingConfig) { "AGP did not expose signing configuration for the Play debug APK." }
-            .from(android.signingConfigs.getByName("debug"))
     }
     finalizeDsl { extension ->
         extension.buildTypes.findByName("nonMinifiedRelease")?.optimization?.enable = false
@@ -318,11 +296,6 @@ dependencies {
     implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.material3.adaptive.navigation3)
-
-    // Firebase
-    implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.analytics)
-    implementation(libs.firebase.crashlytics)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)

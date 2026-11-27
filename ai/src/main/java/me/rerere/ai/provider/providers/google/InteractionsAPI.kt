@@ -588,6 +588,8 @@ internal fun parseInteractionsUsage(usage: JsonObject?): TokenUsage? {
         completionTokens = count("total_output_tokens") + count("total_thought_tokens"),
         totalTokens = count("total_tokens"),
         cachedTokens = count("total_cached_tokens"),
+        completionTokensReported = usage["total_output_tokens"]?.jsonPrimitiveOrNull?.intOrNull != null ||
+            usage["total_thought_tokens"]?.jsonPrimitiveOrNull?.intOrNull != null,
         promptTokensReported = usage["total_input_tokens"]?.jsonPrimitiveOrNull?.intOrNull != null,
         cachedTokensReported = usage["total_cached_tokens"]?.jsonPrimitiveOrNull?.intOrNull != null,
     )

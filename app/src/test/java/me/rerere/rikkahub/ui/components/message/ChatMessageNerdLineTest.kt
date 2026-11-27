@@ -62,7 +62,7 @@ class ChatMessageNerdLineTest {
 
     @Test
     fun `explicit zero is reported during generation and after completion`() {
-        val zero = TokenUsage(promptTokensReported = true, cachedTokensReported = true, cacheWriteTokens = 0)
+        val zero = TokenUsage(promptTokensReported = true, completionTokensReported = true, cachedTokensReported = true, cacheWriteTokens = 0)
         val message = nextStep().copy(lastUsage = zero)
         for (generating in listOf(true, false)) {
             val stats = message.nerdStats(previous, generating)

@@ -438,7 +438,7 @@ private fun UsageTotalsGrid(usage: UsageStats, modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f),
                 icon = HugeIcons.Download04,
                 label = stringResource(R.string.stats_page_output_tokens),
-                value = formatTokens(totals.completionTokens),
+                value = cacheCountLabel(totals.completionTokens, totals.cache.completionKnownRequestCount, totals.cache.requestCount),
             )
         }
         Row(
@@ -547,19 +547,15 @@ private fun UsageReadout(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = cacheCountLabel(promptTokens + completionTokens, cache.promptReportedRequestCount, cache.requestCount),
+            text = cacheCountLabel(promptTokens + completionTokens, cache.totalKnownRequestCount, cache.requestCount),
             style = MaterialTheme.typography.headlineSmall,
         )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            listOf(
-                R.string.chat_message_usage_output to completionTokens,
-            ).forEach { (label, tokens) ->
-                Text(
-                    text = "${stringResource(label)} ${formatTokens(tokens)}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = "${stringResource(R.string.chat_message_usage_output)} ${cacheCountLabel(completionTokens, cache.completionKnownRequestCount, cache.requestCount)}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
                 text = "${stringResource(R.string.chat_message_usage_input)} ${cacheCountLabel(promptTokens, cache.promptReportedRequestCount, cache.requestCount)}",
                 style = MaterialTheme.typography.labelMedium,

@@ -185,12 +185,13 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
         val inputTokens = usageJson["input_tokens"]?.jsonPrimitive?.intOrNull ?: 0
         val cachedInputTokens = usageJson["cache_read_input_tokens"]?.jsonPrimitive?.intOrNull ?: 0
         val cachedCreationTokens = usageJson["cache_creation_input_tokens"]?.jsonPrimitive?.intOrNull ?: 0
-        val completionTokens = usageJson["output_tokens"]?.jsonPrimitive?.intOrNull ?: 0
+        val completionTokens = usageJson["output_tokens"]?.jsonPrimitive?.intOrNull?.takeIf { it >= 0 }
         val promptTokens = inputTokens + cachedInputTokens + cachedCreationTokens
         return TokenUsage(
             promptTokens = promptTokens,
-            completionTokens = completionTokens,
-            totalTokens = promptTokens + completionTokens,
+            completionTokens = completionTokens ?: 0,
+            completionTokensReported = completionTokens != null,
+            totalTokens = promptTokens + (completionTokens ?: 0),
             cachedTokens = cachedInputTokens,
             promptTokensReported = usageJson["input_tokens"]?.jsonPrimitive?.intOrNull != null,
             cachedTokensReported = usageJson["cache_read_input_tokens"]?.jsonPrimitive?.intOrNull != null,

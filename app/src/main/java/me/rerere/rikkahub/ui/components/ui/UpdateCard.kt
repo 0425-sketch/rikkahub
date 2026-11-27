@@ -26,6 +26,8 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -36,6 +38,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import me.rerere.ui.toast.ToastType
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
@@ -123,8 +127,25 @@ fun UpdateCard(vm: ChatVM) {
         }
         if (showDetail) {
             var pendingName by rememberSaveable { mutableStateOf<String?>(null) }
+            val scope = rememberCoroutineScope()
+            var preparing by remember { mutableStateOf(false) }
             fun startDownload(item: UpdateDownload) {
-                if (vm.updateChecker.downloadUpdate(context, item)) {
+                if (vm.updateChecker.personal) {
+                    preparing = true
+                    scope.launch {
+                        try {
+                            val install = vm.updateChecker.personalInstaller(context, item)
+                            context.startActivity(install)
+                            showDetail = false
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            toaster.show(context.getString(R.string.update_card_install_failed), type = ToastType.Error)
+                        } finally {
+                            preparing = false
+                        }
+                    }
+                } else if (vm.updateChecker.downloadUpdate(context, item)) {
                     showDetail = false
                     toaster.show(context.getString(R.string.update_card_downloading), type = ToastType.Info)
                 } else {
@@ -138,8 +159,8 @@ fun UpdateCard(vm: ChatVM) {
                 else if (!granted) toaster.show(context.getString(R.string.media_creation_page_storage_permission_required))
             }
             val downloadHandler: (UpdateDownload) -> Unit = download@{ item ->
-                if (!showDetail || pendingName != null) return@download
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                if (!showDetail || pendingName != null || preparing) return@download
+                if (!vm.updateChecker.personal && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
                     context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
                 ) {
                     pendingName = item.name
@@ -179,6 +200,7 @@ fun UpdateCard(vm: ChatVM) {
                     )
                     info.downloads.fastForEach { downloadItem ->
                         OutlinedCard(
+                            enabled = !preparing,
                             onClick = {
                                 downloadHandler(downloadItem)
                             },
@@ -191,7 +213,7 @@ fun UpdateCard(vm: ChatVM) {
                                 },
                                 supportingContent = {
                                     Text(
-                                        text = downloadItem.size
+                                        text = if (preparing) stringResource(R.string.update_card_verifying) else downloadItem.size
                                     )
                                 },
                                 leadingContent = {

@@ -20,7 +20,7 @@ class PersonalReleaseFeedTest {
         val name = "rikkahub-3.4.0-personal.1-$shortSha-arm64.apk"
         val proofUrl = "$download/build-provenance.json"
         val listing = """{
-            "tag_name":"$tag", "target_commitish":"$source", "draft":false, "prerelease":true,
+            "tag_name":"$tag", "target_commitish":"$source", "draft":false, "prerelease":false,
             "published_at":"2026-11-17T11:47:57Z", "body":"Release notes", "assets":[
               {"name":"build-provenance.json","state":"uploaded","size":827,"browser_download_url":"$proofUrl"},
               {"name":"$name","state":"uploaded","size":512,"browser_download_url":"$download/$name","digest":"sha256:$digest"}
@@ -46,7 +46,7 @@ class PersonalReleaseFeedTest {
     }
 
     @Test
-    fun `includes personal pre-releases and selects highest version code across all pages`() = runTest {
+    fun `selects highest stable version code across all pages`() = runTest {
         val first = Delivery(208)
         val equalToInstalled = Delivery(201)
         val winner = Delivery(209)
@@ -104,6 +104,7 @@ class PersonalReleaseFeedTest {
     fun `drafts other channels and foreign proof URLs are skipped without fetching them`() = runTest {
         val release = Delivery(202)
         val untrusted = listOf(
+            release.listing.replace("\"prerelease\":false", "\"prerelease\":true"),
             release.listing.replace("\"draft\":false", "\"draft\":true"),
             release.listing.replace(release.tag, "custom-3.4.0-test"),
             release.listing.replace(release.proofUrl, "https://example.org/proof.json"),

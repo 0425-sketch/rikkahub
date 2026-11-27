@@ -473,12 +473,12 @@ class SigningEntrypointAuthorizationTest(unittest.TestCase):
     def test_artifact_branch_can_only_restore_either_existing_signer(self):
         for source in ("primary", "backup"):
             with self.subTest(source=source):
-                self.invoke("restore", "refs/heads/build/personal-3.3.0", source=source, allowed=True)
+                self.invoke("restore", "refs/heads/migration/release-209", source=source, allowed=True)
 
     def test_artifact_branch_cannot_bootstrap_or_retire_secrets(self):
         for command in ("bootstrap", "retire-setup-token"):
             with self.subTest(command=command):
-                self.invoke(command, "refs/heads/build/personal-3.3.0")
+                self.invoke(command, "refs/heads/migration/release-209")
 
     def test_original_custom_branch_keeps_existing_command_permissions(self):
         for command in ("bootstrap", "restore", "retire-setup-token"):
@@ -486,14 +486,14 @@ class SigningEntrypointAuthorizationTest(unittest.TestCase):
                 self.invoke(command, "refs/heads/custom-3.2.0", allowed=True)
 
     def test_unrelated_branches_tags_and_pull_requests_never_reach_signer(self):
-        for ref in ("refs/heads/master", "refs/heads/build/personal-3.3.0-other",
-                    "refs/tags/build/personal-3.3.0", "refs/pull/1/merge", ""):
+        for ref in ("refs/heads/master", "refs/heads/migration/release-209-other",
+                    "refs/tags/migration/release-209", "refs/pull/1/merge", ""):
             for command in ("bootstrap", "restore", "retire-setup-token"):
                 with self.subTest(ref=ref, command=command):
                     self.invoke(command, ref)
 
     def test_expected_ref_still_requires_correct_repository_and_actions(self):
-        for ref in ("refs/heads/custom-3.2.0", "refs/heads/build/personal-3.3.0"):
+        for ref in ("refs/heads/custom-3.2.0", "refs/heads/migration/release-209"):
             with self.subTest(ref=ref):
                 self.invoke("restore", ref, repo="another-owner/rikkahub")
                 self.invoke("restore", ref, actions="false")

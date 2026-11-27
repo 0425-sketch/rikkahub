@@ -6,12 +6,15 @@ import androidx.room.Insert
 import androidx.room.Query
 import me.rerere.rikkahub.data.db.entity.UsageRecordEntity
 
+// Schema 35 never stored output-field presence. A zero in that column is ambiguous.
 // A rate may only compare cache reads and input tokens from the same reported samples.
 private const val KNOWN_CACHE_SAMPLE =
     "prompt_tokens_reported = 1 AND cached_tokens_reported = 1 AND prompt_tokens >= cached_tokens AND cached_tokens >= 0"
 private const val CACHE_USAGE_PROJECTION =
     "COUNT(*) AS requestCount, " +
         "COALESCE(SUM(CASE WHEN prompt_tokens_reported = 1 THEN 1 ELSE 0 END), 0) AS promptReportedRequestCount, " +
+        "COALESCE(SUM(CASE WHEN completion_tokens > 0 THEN 1 ELSE 0 END), 0) AS completionKnownRequestCount, " +
+        "COALESCE(SUM(CASE WHEN prompt_tokens_reported = 1 AND completion_tokens > 0 THEN 1 ELSE 0 END), 0) AS totalKnownRequestCount, " +
         "COALESCE(SUM(CASE WHEN cached_tokens_reported = 1 THEN 1 ELSE 0 END), 0) AS cacheReportedRequestCount, " +
         "COALESCE(SUM(CASE WHEN " + KNOWN_CACHE_SAMPLE + " THEN 1 ELSE 0 END), 0) AS cacheRateRequestCount, " +
         "COALESCE(SUM(CASE WHEN " + KNOWN_CACHE_SAMPLE + " THEN prompt_tokens ELSE 0 END), 0) AS cacheRatePromptTokens, " +
@@ -109,6 +112,8 @@ data class SourceUsage(
 data class CacheUsageSummary(
     val requestCount: Long = 0,
     val promptReportedRequestCount: Long = 0,
+    val completionKnownRequestCount: Long = 0,
+    val totalKnownRequestCount: Long = 0,
     val cacheReportedRequestCount: Long = 0,
     val cacheRateRequestCount: Long = 0,
     val cacheRatePromptTokens: Long = 0,

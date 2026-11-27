@@ -166,6 +166,8 @@ internal class GoogleStreamDecoder(
             completionTokens = candidateTokens + thoughtTokens,
             totalTokens = totalTokens,
             cachedTokens = cachedTokens,
+            completionTokensReported = usage["candidatesTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null ||
+                usage["thoughtsTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null,
             promptTokensReported = usage["promptTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null,
             cachedTokensReported = usage["cachedContentTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null,
         )

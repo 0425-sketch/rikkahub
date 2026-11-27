@@ -14,6 +14,7 @@ data class TokenUsage(
     val cachedTokensReported: Boolean = cachedTokens > 0,
     // Keep absent cache-write accounting unknown, without estimating from input or cache misses.
     val cacheWriteTokens: Int? = null,
+    val completionTokensReported: Boolean = completionTokens > 0,
 )
 
 /**
@@ -22,7 +23,7 @@ data class TokenUsage(
  */
 fun TokenUsage?.merge(other: TokenUsage): TokenUsage {
     val promptTokens = if (other.promptTokensReported) other.promptTokens else this?.promptTokens ?: 0
-    val completionTokens = if (other.completionTokens > 0) other.completionTokens else this?.completionTokens ?: 0
+    val completionTokens = if (other.completionTokensReported) other.completionTokens else this?.completionTokens ?: 0
     val cachedTokens = if (other.cachedTokensReported) other.cachedTokens else this?.cachedTokens ?: 0
     return TokenUsage(
         promptTokens = promptTokens,
@@ -30,6 +31,7 @@ fun TokenUsage?.merge(other: TokenUsage): TokenUsage {
         totalTokens = promptTokens + completionTokens,
         cachedTokens = cachedTokens,
         promptTokensReported = other.promptTokensReported || this?.promptTokensReported == true,
+        completionTokensReported = other.completionTokensReported || this?.completionTokensReported == true,
         cachedTokensReported = other.cachedTokensReported || this?.cachedTokensReported == true,
         cacheWriteTokens = other.cacheWriteTokens ?: this?.cacheWriteTokens,
     )
@@ -48,6 +50,7 @@ fun TokenUsage?.sum(other: TokenUsage?): TokenUsage? {
         cachedTokens = cachedTokens + other.cachedTokens,
         totalTokens = totalTokens + other.totalTokens,
         promptTokensReported = promptTokensReported && other.promptTokensReported,
+        completionTokensReported = completionTokensReported && other.completionTokensReported,
         cachedTokensReported = cachedTokensReported && other.cachedTokensReported,
         cacheWriteTokens = if (cacheWriteTokens != null && other.cacheWriteTokens != null) {
             cacheWriteTokens + other.cacheWriteTokens

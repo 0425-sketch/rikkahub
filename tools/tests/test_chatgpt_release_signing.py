@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-SPEC = importlib.util.spec_from_file_location("personal_release", Path(__file__).resolve().parents[1] / "publish-chatgpt-test.py")
+SPEC = importlib.util.spec_from_file_location("personal_release", Path(__file__).resolve().parents[1] / "personal-release.py")
 release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
 CERT = "c" * 64
@@ -24,12 +24,10 @@ class PublishReached(Exception):
 
 class ChatGPTReleaseSigningTest(unittest.TestCase):
     def test_release_identity_matches_android_output_and_build_config(self):
-        source = (Path(__file__).resolve().parents[2] / "app/build.gradle.kts").read_text()
-        self.assertEqual(release.VERSION_CODE, int(re.search(r"val personalVersionCode = (\d+)", source)[1]))
-        self.assertEqual(release.VERSION_NAME, re.search(r'val personalVersionName = "([^"]+)"', source)[1])
-        self.assertIn("output.versionCode.set(personalVersionCode)", source)
-        self.assertIn("output.versionName.set(personalVersionName)", source)
-        self.assertGreater(release.VERSION_CODE, 205)
+        source = (release.ROOT / "app/build.gradle.kts").read_text()
+        self.assertIn('gradleProperty("personalVersionCode")', source)
+        self.assertIn('gradleProperty("personalVersionName")', source)
+        self.assertGreater(release.VERSION_CODE, 209)
         self.assertRegex(release.VERSION_NAME, r"\A[0-9]+\.[0-9]+\.[0-9]+-personal\.[1-9][0-9]*\Z")
 
     def test_inspection_rejects_unsigned_apk_before_publication(self):
@@ -64,12 +62,12 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
                           "status": "completed", "conclusion": "success"} for i, role in enumerate(("primary", "backup"))]}
 
     def invoke(self, directory, primary=None, backup=None, receipts=None, pin=CERT, verify_only=False):
-        arguments = ["publish-chatgpt-test.py", "--apk", str(directory / "primary.apk"), "--build-tools", str(directory),
+        arguments = ["personal-release.py", "--apk", str(directory / "primary.apk"), "--build-tools", str(directory),
                      "--output", str(directory / "evidence")]
         if verify_only:
             arguments.append("--verify-only")
         else:
-            arguments += ["--recovery-apk", str(directory / "backup.apk"),
+            arguments += ["--prepare", "--recovery-apk", str(directory / "backup.apk"),
                           "--primary-receipt", str(directory / "primary.json"), "--backup-receipt", str(directory / "backup.json")]
             for role in ("primary", "backup"):
                 (directory / f"{role}.json").write_text(json.dumps((receipts or {}).get(role, self.receipt(role))))
@@ -79,7 +77,7 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
              patch.object(release.subprocess, "check_output", return_value=SHA + "\n"), \
              patch.object(release.sys, "argv", arguments), \
              patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": release.REPO,
-                 "GITHUB_REF": "refs/heads/custom-3.2.0", "GITHUB_SHA": SHA, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
+                 "GITHUB_REF_NAME": "custom-3.2.0", "GITHUB_SHA": SHA, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
                  "GITHUB_TOKEN": "synthetic-test-token-never-sent"}), contextlib.redirect_stdout(io.StringIO()):
             release.main()
 
@@ -94,7 +92,6 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
             with self.assertRaisesRegex(release.delivery.DeliveryError, "SIGNING_MISMATCH"):
                 self.invoke(Path(tmp), primary=self.metadata(certificate="d" * 64))
             gh.assert_not_called()
-            self.assertTrue((Path(tmp) / "evidence/apk-verification.json").exists())
 
     def test_backup_must_match_the_pinned_certificate(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(release.delivery, "gh") as gh:
@@ -125,26 +122,45 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
                     self.invoke(Path(tmp))
                 gh.assert_not_called()
 
-    def test_two_real_restore_receipts_and_distinct_successful_jobs_reach_publication(self):
+    def test_staging_produces_old_client_metadata_without_publishing(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(release.delivery, "api_json", return_value=self.jobs()), \
-             patch.object(release.delivery, "gh", side_effect=PublishReached) as gh:
-            with self.assertRaises(PublishReached):
-                self.invoke(Path(tmp))
-            self.assertEqual(gh.call_count, 1)
-            self.assertEqual(gh.call_args.args[0][:2], ["release", "create"])
-            self.assertEqual(f"custom-3.3.0-personal-{SHA[:12]}-1-1", gh.call_args.args[0][2])
-            notes = (Path(tmp) / "evidence/release-notes.txt").read_text()
-            self.assertIn("RikkaHub 3.3.0", notes)
-            self.assertNotIn("生成中用量显示修复版", notes)
-            proof = json.loads((Path(tmp) / "evidence/signing-restoration-verification.json").read_text())
-            self.assertTrue(proof["restoration_verified"])
-            self.assertEqual(2, len(proof["clean_builds"]))
-
-    def test_verification_only_is_not_publication_or_restoration_proof(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.object(release.delivery, "gh") as gh:
-            self.invoke(Path(tmp), primary=self.metadata(certificate="d" * 64), verify_only=True, pin=None)
+             patch.object(release.delivery, "gh") as gh:
+            self.invoke(Path(tmp))
             gh.assert_not_called()
-            self.assertFalse((Path(tmp) / "evidence/signing-restoration-verification.json").exists())
+            evidence = Path(tmp) / "evidence"
+            notes = (evidence / "release-notes.txt").read_text()
+            self.assertIn(release.TITLE, notes)
+            self.assertIn(release.BASELINE_SHA, notes)
+            self.assertIn(f"<!-- rikkahub-personal-version-code: {release.VERSION_CODE} -->", notes)
+            proof = json.loads((evidence / "build-provenance.json").read_text())
+            self.assertEqual(proof["tag"], f"custom-{release.SERIES}-personal-{SHA[:12]}-1-1")
+            self.assertTrue(proof["two_clean_restorations_verified"])
+            self.assertEqual(len(list(evidence.glob(f"rikkahub-{release.VERSION_NAME}-{SHA[:12]}-arm64.apk"))), 1)
+
+    def test_verification_only_requires_fixed_signer(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(release.delivery, "gh") as gh:
+            with self.assertRaisesRegex(release.delivery.DeliveryError, "SIGNING_MISMATCH"):
+                self.invoke(Path(tmp), primary=self.metadata(certificate="d" * 64), verify_only=True)
+            gh.assert_not_called()
+
+    def test_resume_accepts_only_matching_draft_assets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "checksum"
+            path.write_bytes(b"x")
+            asset = {"name": path.name, "state": "uploaded", "size": 1, "digest": "sha256:" + release.delivery.sha256(path)}
+            self.assertEqual(release.check_remote_assets({"assets": []}, [path], complete=False), {})
+            for invalid in ([], [asset, asset], [dict(asset, digest="sha256:" + "f"*64)], [dict(asset, name="wrong")]):
+                with self.assertRaisesRegex(release.delivery.DeliveryError, "CONFLICT"):
+                    release.check_remote_assets({"assets": invalid}, [path], complete=True)
+            self.assertEqual(release.check_remote_assets({"assets": [asset]}, [path], complete=True), {path.name: asset})
+
+    def test_reserved_version_cannot_be_reused(self):
+        other = {"tag_name": f"custom-3.3.0-personal-{SHA[:12]}-1-1", "draft": False,
+                 "body": f"<!-- rikkahub-personal-version-code: {release.VERSION_CODE} -->"}
+        with self.assertRaisesRegex(release.delivery.DeliveryError, "CONFLICT"), patch.object(release.delivery, "gh") as gh:
+            release.check_new_version([other], "another-tag", {})
+        gh.assert_not_called()
+
 
 
 if __name__ == "__main__":

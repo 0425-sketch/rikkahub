@@ -3,6 +3,8 @@ package me.rerere.ai.provider.providers.openai
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.TokenUsage
+import me.rerere.ai.core.merge
+import me.rerere.ai.core.sum
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.stream.SseEvent
 import me.rerere.ai.ui.StreamChunk
@@ -33,6 +35,22 @@ class ResponseUsageTest {
         assertEquals(0, zero.cachedTokens)
         assertEquals(0, zero.cacheWriteTokens)
         assertFalse(usage("{}").promptTokensReported)
+    }
+
+    @Test
+    fun `omitted output and reported zero stay distinct across snapshots steps and persistence`() {
+        val missing = usage("""{"input_tokens":12}""")
+        val previous = usage("""{"output_tokens":5}""")
+        val zero = usage("""{"output_tokens":0}""")
+        assertFalse(missing.completionTokensReported)
+        assertEquals(5, previous.merge(missing).completionTokens)
+        assertTrue(zero.completionTokensReported)
+        assertEquals(0, previous.merge(zero).completionTokens)
+        val partial = previous.sum(missing)!!
+        assertEquals(5, partial.completionTokens)
+        assertFalse(partial.completionTokensReported)
+        assertEquals(zero, json.decodeFromString<TokenUsage>(json.encodeToString(zero)))
+        assertFalse(json.decodeFromString<TokenUsage>("""{"completionTokens":0}""").completionTokensReported)
     }
 
     @Test

@@ -942,6 +942,8 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             completionTokens = candidatesTokens + thoughtTokens,
             totalTokens = totalTokens,
             cachedTokens = cachedTokens,
+            completionTokensReported = jsonObject["candidatesTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null ||
+                jsonObject["thoughtsTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null,
             promptTokensReported = jsonObject["promptTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null,
             cachedTokensReported = jsonObject["cachedContentTokenCount"]?.jsonPrimitiveOrNull?.intOrNull != null,
         )

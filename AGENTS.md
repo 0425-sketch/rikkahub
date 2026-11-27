@@ -2,7 +2,7 @@
 
 ## 自用分支的开发起点
 
-在 `0425-sketch/rikkahub` 接续开发时，从远端默认分支的最新提交开始，并核对[主交接记录](docs/chatgpt-oauth-progress.md)顶部的最新交付。自用签名测试包也计入交付版本，确定为开发基线后，将对应的源码、版本配置和打包校验一起同步到默认分支。
+在 `0425-sketch/rikkahub` 接续开发时，从远端默认分支的最新提交开始，并核对[主交接记录](docs/chatgpt-oauth-progress.md)顶部的最新交付。Debug 209 为最后一个公开的 Debug 包。之后个人版通过 `githubRelease` 交付，版本号维护在根目录的 `gradle.properties`。
 
 ## Project Overview
 
@@ -25,8 +25,8 @@ Material 3 look (cards with dividers, plain forms).
 ## Build, Test, and Development Commands
 
 ```bash
-./gradlew assembleGithubDebug    # 构建 GitHub 渠道的 Debug APK
-./gradlew assembleGithubRelease  # 构建 GitHub Release / 每日构建用的 APK
+./gradlew assembleGithubDebug    # 本地开发 APK，包名带 .debug
+./gradlew assembleGithubRelease  # 使用已恢复的固定个人签名构建 Release APK
 ./gradlew bundlePlayRelease      # 构建上架 Google Play 的 AAB
 ./gradlew test                   # 运行所有模块的 JVM 单元测试
 ./gradlew lint                   # 运行 Android Lint
@@ -34,8 +34,7 @@ Material 3 look (cards with dividers, plain forms).
 ./gradlew spotlessCheck          # 只检查格式不改文件
 ```
 
-App 有一个 `distribution` 维度的 product flavor：`github`（默认）和 `play`，共用同一个 applicationId。
-渠道差异用 `BuildConfig.IS_PLAY_STORE` 判断（如 Play 版不检查更新、不显示更新提醒）。
+App 有 `github`（默认）和 `play` 两个分发渠道。`githubRelease` 的 applicationId 是 `me.rerere.rikkahub.personal`，支持从本仓库检查更新。`playRelease` 沿用 `me.rerere.rikkahub`，通过 `BuildConfig.IS_PLAY_STORE` 关闭自更新入口。
 
 ## Module Structure
 

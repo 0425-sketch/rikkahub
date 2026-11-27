@@ -15,12 +15,14 @@ internal data class PersonalReleaseUpdate(
     val apkName: String,
     val apkUrl: String,
     val apkSize: Long,
+    val apkSha256: String,
 )
 
 internal object PersonalReleaseFeed {
     private const val REPOSITORY = "0425-sketch/rikkahub"
     private const val PAGE_SIZE = 100
-    private const val CERTIFICATE_SHA256 = "882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd"
+    const val APPLICATION_ID = "me.rerere.rikkahub.personal"
+    const val CERTIFICATE_SHA256 = "882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd"
     private val json = Json { ignoreUnknownKeys = true }
     private val personalTag = Regex("""custom-(\d+\.\d+\.\d+)-personal-([0-9a-f]{12})-\d+-\d+""")
     private val personalVersion = Regex("""(\d+\.\d+\.\d+)-personal\.[1-9]\d*""")
@@ -28,7 +30,7 @@ internal object PersonalReleaseFeed {
     private val sourceSha = Regex("[0-9a-f]{40}")
     private val sha256 = Regex("[0-9a-f]{64}")
 
-    // GitHub's /latest omits pre-releases, and publication order does not determine Android upgrade order.
+    // Publication order does not determine Android upgrade order.
     suspend fun latest(installedVersionCode: Int, readText: suspend (String) -> String): PersonalReleaseUpdate? {
         var page = 1
         var latest: PersonalReleaseUpdate? = null
@@ -50,7 +52,7 @@ internal object PersonalReleaseFeed {
     private suspend fun Release.personalUpdate(readText: suspend (String) -> String): PersonalReleaseUpdate? {
         val tag = personalTag.matchEntire(tagName) ?: return null
         val (version, shortSha) = tag.destructured
-        if (draft || publishedAt == null || !sourceSha.matches(target) || !target.startsWith(shortSha)) return null
+        if (draft || prerelease || publishedAt == null || !sourceSha.matches(target) || !target.startsWith(shortSha)) return null
         try {
             Instant.parse(publishedAt)
         } catch (_: DateTimeParseException) {
@@ -64,7 +66,7 @@ internal object PersonalReleaseFeed {
         } catch (_: SerializationException) {
             return null
         }
-        if (metadata.applicationId != "me.rerere.rikkahub.personal" || metadata.certificateSha256 != CERTIFICATE_SHA256 ||
+        if (metadata.applicationId != APPLICATION_ID || metadata.certificateSha256 != CERTIFICATE_SHA256 ||
             metadata.tag != tagName || metadata.sourceCommit != target || metadata.versionCode <= 0 ||
             personalVersion.matchEntire(metadata.versionName)?.groupValues?.get(1) != version ||
             "arm64-v8a" !in metadata.architectures || !sha256.matches(metadata.apkSha256)
@@ -74,7 +76,7 @@ internal object PersonalReleaseFeed {
         if (apk.size <= 0 || apk.size != metadata.apkSize || apk.digest != "sha256:${metadata.apkSha256}") return null
         return PersonalReleaseUpdate(
             metadata.versionCode, metadata.versionName, publishedAt, body.orEmpty().replace(versionCodeHint, "").trim(),
-            apk.name, apk.url, apk.size,
+            apk.name, apk.url, apk.size, metadata.apkSha256,
         )
     }
 
@@ -88,6 +90,7 @@ internal object PersonalReleaseFeed {
         @SerialName("tag_name") val tagName: String,
         @SerialName("target_commitish") val target: String = "",
         val draft: Boolean,
+        val prerelease: Boolean = false,
         @SerialName("published_at") val publishedAt: String? = null,
         val body: String? = null,
         val assets: List<Asset> = emptyList(),

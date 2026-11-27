@@ -57,7 +57,8 @@ class UsageTest {
             lastUsage = TokenUsage(),
         )
         assertNull(message.contextTokens())
-        assertEquals(0, message.copy(lastUsage = TokenUsage(promptTokensReported = true)).contextTokens())
+        assertNull(message.copy(lastUsage = TokenUsage(promptTokensReported = true)).contextTokens())
+        assertEquals(0, message.copy(lastUsage = TokenUsage(promptTokensReported = true, completionTokensReported = true)).contextTokens())
     }
 
     @Test

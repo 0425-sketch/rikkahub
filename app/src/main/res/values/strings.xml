@@ -1141,6 +1141,8 @@
   <string name="update_card_close">Close</string>
   <string name="update_card_downloading">Downloading. When finished, open the APK from the notification or Downloads to install it.</string>
   <string name="update_card_download_failed">Could not start the download. Check that Download Manager is available and try again.</string>
+  <string name="update_card_verifying">Downloading and verifying the update…</string>
+  <string name="update_card_install_failed">Could not verify or open this update. Check your connection and retry.</string>
   <string name="update_card_new_version_found">New version found %s</string>
   <string name="update_card_unknown_error">Unknown error</string>
   <string name="upload_file">Upload File</string>

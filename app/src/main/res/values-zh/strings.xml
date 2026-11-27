@@ -1107,6 +1107,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="update_card_close">关闭</string>
   <string name="update_card_downloading">下载已开始。完成后可点系统通知，或在“下载”中打开 APK 手动安装。</string>
   <string name="update_card_download_failed">未能开始下载，请检查系统下载管理器是否可用后重试。</string>
+  <string name="update_card_verifying">正在下载并校验更新…</string>
+  <string name="update_card_install_failed">未能校验或打开更新包。请检查网络后重试。</string>
   <string name="update_card_new_version_found">发现新版本 %s</string>
   <string name="update_card_unknown_error">未知错误</string>
   <string name="upload_file">上传文件</string>

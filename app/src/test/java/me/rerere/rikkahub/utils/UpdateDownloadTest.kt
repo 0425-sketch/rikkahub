@@ -8,8 +8,11 @@ import android.os.Environment
 import android.os.Looper
 import kotlinx.coroutines.cancel
 import me.rerere.rikkahub.AppScope
+import me.rerere.rikkahub.BuildConfig
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import org.junit.After
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -30,7 +33,15 @@ class UpdateDownloadTest {
     fun cancelScope() = scope.cancel()
 
     @Test
-    fun `personal APK goes to public Downloads and completion leaves installation to the user`() {
+    fun `redirects stay on GitHub HTTPS release infrastructure`() {
+        assertTrue("https://release-assets.githubusercontent.com/download".toHttpUrl().isGithubUpdateUrl())
+        for (url in listOf("https://example.org/apk", "http://github.com/a", "https://github.com:444/a", "https://x@y.github.com/a")) {
+            assertFalse(url.toHttpUrl().isGithubUpdateUrl())
+        }
+    }
+
+    @Test
+    fun `non-personal APK goes to public Downloads and completion leaves installation to the user`() {
         val app = RuntimeEnvironment.getApplication()
         val manager = requireNotNull(app.getSystemService(DownloadManager::class.java))
         val tag = "custom-3.3.0-personal-4ac14e80bb24-44074740868-1"
@@ -38,7 +49,13 @@ class UpdateDownloadTest {
         val url = "https://github.com/0425-sketch/rikkahub/releases/download/$tag/$name"
         val selected = UpdateDownload(name, url, "58.3 MiB")
 
-        assertTrue(UpdateChecker(OkHttpClient(), scope).downloadUpdate(app, selected))
+        val checker = UpdateChecker(OkHttpClient(), scope)
+        if (BuildConfig.APPLICATION_ID == PersonalReleaseFeed.APPLICATION_ID) {
+            assertFalse(checker.downloadUpdate(app, selected))
+            assertEquals(0, manager.query(DownloadManager.Query()).use { it.count })
+            return
+        }
+        assertTrue(checker.downloadUpdate(app, selected))
         val id = manager.query(DownloadManager.Query()).use { cursor ->
             assertEquals(1, cursor.count)
             assertTrue(cursor.moveToFirst())

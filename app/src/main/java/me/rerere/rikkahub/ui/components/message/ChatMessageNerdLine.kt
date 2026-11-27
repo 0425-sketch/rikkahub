@@ -181,11 +181,18 @@ private fun UsageDetails(stats: NerdStats, contextLength: Int?) {
                 stringResource(R.string.cache_usage_total_write),
                 total.cacheWriteTokens?.exact() ?: missingUsageValue(stats.generating),
             )
-            UsageDetailRow(stringResource(R.string.chat_message_usage_total_output), total.completionTokens.exact())
+            UsageDetailRow(stringResource(R.string.chat_message_usage_total_output), outputValue(total, stats.generating))
         }
         if (stats.tps != null) UsageDetailRow(stringResource(R.string.chat_message_usage_speed), "${stats.tps.toFixed(1)} tok/s")
         if (stats.durationMillis != null) UsageDetailRow(stringResource(R.string.chat_message_usage_duration), "${(stats.durationMillis / 1000f).toFixed(1)}s")
     }
+}
+
+@Composable
+private fun outputValue(usage: TokenUsage, generating: Boolean): String = when {
+    usage.completionTokensReported -> usage.completionTokens.exact()
+    usage.completionTokens > 0 -> stringResource(R.string.cache_usage_partial, usage.completionTokens.exact())
+    else -> missingUsageValue(generating)
 }
 
 @Composable
@@ -212,9 +219,12 @@ private fun ContextUsageBar(
     generating: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    if (!lastUsage.promptTokensReported) {
+    if (!lastUsage.promptTokensReported || !lastUsage.completionTokensReported) {
         UsageDetailRow(stringResource(R.string.chat_message_usage_context), missingUsageValue(generating))
-        UsageDetailRow(stringResource(R.string.chat_message_usage_output), lastUsage.completionTokens.exact())
+        if (lastUsage.promptTokensReported) {
+            UsageDetailRow(stringResource(R.string.chat_message_usage_input), lastUsage.promptTokens.exact())
+        }
+        UsageDetailRow(stringResource(R.string.chat_message_usage_output), outputValue(lastUsage, generating))
         return
     }
     val colorScheme = MaterialTheme.colorScheme
@@ -366,7 +376,7 @@ internal data class NerdStats(
     val tps: Float?,
     val generating: Boolean,
 ) {
-    val contextStatus: UsageValueStatus get() = status(lastUsage.promptTokensReported)
+    val contextStatus: UsageValueStatus get() = status(lastUsage.promptTokensReported && lastUsage.completionTokensReported)
     val cacheReadStatus: UsageValueStatus get() = status(lastUsage.cachedTokensReported)
 
     private fun status(reported: Boolean): UsageValueStatus = when {
@@ -391,7 +401,7 @@ internal fun UIMessage.nerdStats(usage: TokenUsage, generating: Boolean = false)
         steps = stepCount ?: 1,
         contextTokens = last.promptTokens + last.completionTokens,
         durationMillis = durationMillis,
-        tps = durationMillis?.let { usage.completionTokens.toFloat() / it * 1000 },
+        tps = durationMillis?.takeIf { usage.completionTokensReported }?.let { usage.completionTokens.toFloat() / it * 1000 },
         generating = generating,
     )
 }
