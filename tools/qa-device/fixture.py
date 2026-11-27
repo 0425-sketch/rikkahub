@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PKG = 'me.rerere.rikkahub.personal'
 MODEL = 'abc00000-0000-4000-8000-000000000001'
 PORT = 18414
-PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKwAAAABJRU5ErkJggg==')
+PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAALUlEQVR4nGMU87rFQEvARFPTRy0YtWDUglELRi0YtWDUglELRi0YtWDUAioCAG0YAXq0bZtrAAAAAElFTkSuQmCC')
 LOG = Path(os.environ.get('RUNNER_TEMP','/tmp')) / 'fixture-events.jsonl'
 
 

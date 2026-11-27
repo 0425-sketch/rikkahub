@@ -31,7 +31,7 @@ def screen():
     raise RuntimeError('Could not read foreground window')
 def find(nodes, label):
     for a in reversed(nodes):
-        if label == a.get('class') or label == a.get('resource-id') or label in (a.get('text','')+'\n'+a.get('content-desc','')).splitlines():
+        if label == a.get('class') or label == a.get('resource-id') or label.casefold() in (a.get('text','')+'\n'+a.get('content-desc','')).casefold().splitlines():
             return a
     return None
 def labels(nodes):
@@ -83,17 +83,15 @@ def settings():
         stats=find(nodes,'统计数据')
         assert stats,labels(nodes)
         sx,sy,sr,sb=map(int,re.findall(r'\d+',stats['bounds']))
-        matches=[]
-        for node in nodes:
-            if node.get('clickable')!='true': continue
-            x,y,r,b=map(int,re.findall(r'\d+',node['bounds']))
-            if x>=sr and y<=(sy+sb)//2<=b and r-x<=110 and b-y<=110:
-                matches.append((x,node))
-        print('Drawer controls',[(n['bounds'],n.get('content-desc'),n.get('text')) for n in nodes if n.get('clickable')=='true' or n.get('content-desc')],flush=True)
-        assert matches,[(n['bounds'],n.get('clickable')) for n in nodes]
-        item=max(matches,key=lambda entry:entry[0])[1]
-    print('Settings control',item['bounds'],flush=True)
-    touch(item)
+        # ChatDrawer.kt: 300dp sheet, 8dp column and row insets, 40dp circle.
+        # The icon has no semantic node on compressed Android 11 accessibility trees.
+        density=int(re.findall(r'(?:Physical|Override) density: (\d+)',sh('wm','density'))[-1])
+        x=round((300 - 8 - 8 - 20) * density / 160)
+        y=(sy+sb)//2
+        print('Settings at end of drawer row',x,y,flush=True)
+        sh('input','tap',str(x),str(y))
+    else:
+        touch(item)
     wait('Settings')
 
 def event(label):
