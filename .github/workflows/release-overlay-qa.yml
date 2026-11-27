@@ -1,0 +1,54 @@
+name: Isolated signed APK overlay tests
+on:
+  push:
+    branches: [qa/release-overlays-209]
+    paths: ['.github/workflows/release-overlay-qa.yml', 'tools/qa-overlay/**']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  overlays:
+    if: github.repository == '0425-sketch/rikkahub'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          cmdline-tools-version: '16111833'
+          packages: build-tools;37.0.0 platform-tools emulator
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+      - name: Boot a disposable userdebug emulator with ARM64 support
+        run: |
+          set -eu
+          test -c /dev/kvm
+          sudo chmod 666 /dev/kvm
+          sdkmanager 'system-images;android-30;google_apis;x86_64'
+          echo no | avdmanager create avd -n rikkaoverlay -k 'system-images;android-30;google_apis;x86_64' -d pixel_2
+          "$ANDROID_HOME/emulator/emulator" -avd rikkaoverlay -no-window -no-audio -no-boot-anim -no-snapshot -writable-system -gpu swiftshader_indirect -accel on -memory 3072 > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          adb wait-for-device
+          timeout 420 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 3; done'
+          adb root
+          adb wait-for-device
+          adb shell id -u | grep -x 0
+          adb shell input keyevent 82
+          adb shell wm size 720x1440
+          adb shell wm density 270
+          adb shell getprop ro.product.cpu.abilist | grep arm64-v8a
+          for scale in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global "$scale" 0; done
+          mkdir "$RUNNER_TEMP/overlay"
+          echo "RQA_DATA=$RUNNER_TEMP/overlay" >> "$GITHUB_ENV"
+          echo "RQA_CODE=$GITHUB_WORKSPACE/tools/qa-overlay" >> "$GITHUB_ENV"
+      - name: Seed chat, image, preferences, memory and local usage in the original APK
+        run: |
+          python -m pip install --quiet Pillow cryptography
+          bash tools/qa-overlay/seed.sh
+      - name: Collect synthetic acceptance snapshots
+        if: always()
+        run: |
+          adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' | head -5 || true
+          adb logcat -d -v brief 'AndroidRuntime:E' '*:S' | tail -50 || true
+          test ! -f "$RUNNER_TEMP/overlay/snapshot-209.json" || cat "$RUNNER_TEMP/overlay/snapshot-209.json"
