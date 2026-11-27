@@ -1,0 +1,15 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.rikkahub.qa.document">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="30" />
+    <application android:label="QA recovery fixture" android:debuggable="true" android:allowBackup="false">
+        <activity android:name=".PickerActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.OPEN_DOCUMENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+        <provider android:name=".ZipProvider" android:authorities="org.rikkahub.qa.document"
+            android:grantUriPermissions="true" android:exported="false" />
+    </application>
+</manifest>

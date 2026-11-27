@@ -166,52 +166,38 @@ def export_backup():
     with tempfile.NamedTemporaryFile() as f:
         f.write(recovered.getvalue());f.flush(); adb('push',f.name,'/sdcard/Download/qa-restoration.zip')
     mark('Normal local export read back with settings and Room data')
+    configure_recovery_provider(recovered.getvalue())
+def configure_recovery_provider(data):
+    # Install after normal export so Android's CreateDocument has already used the stock picker.
+    resolve="cmd package resolve-activity --brief -a android.intent.action.OPEN_DOCUMENT -c android.intent.category.OPENABLE -t '*/*'"
+    stock=sh(resolve).splitlines()[-1]
+    assert 'documentsui' in stock,stock
+    subprocess.run(['bash','tools/qa-device/picker/build.sh'],check=True)
+    app='org.rikkahub.qa.document'
+    adb('shell','run-as',app,'mkdir','-p','files')
+    adb('shell','-T',f'run-as {app} sh -c "cat > files/archive.zip"',data=data)
+    # On this disposable emulator, just the OPEN_DOCUMENT picker component is swapped.
+    sh('pm','disable-user','--user','0',stock)
+    selected=sh(resolve).splitlines()[-1]
+    assert app in selected,selected
+    print('Installed controlled OpenDocument handler for one recovery archive',flush=True)
+
 def rescue():
-    settings(); scrolltap('About this app'); scrolltap('Version',long=True)
+    settings(); scrolltap('About this app')
+    for _ in range(4):
+        nodes=screen()
+        if not find(nodes,'About this app'): break
+        # Ensure row is no longer still moving from a previous fling.
+        touch(find(nodes,'About this app'))
+    scrolltap('Version',long=True)
     wait('Debug Mode')
     mark('About version long press opened Debug Mode on installed APK')
     scrolltap('崩溃')
     time.sleep(2)
-    # The app's crash-handler preference was set by the deliberate, built-in test crash.
     launch()
     wait('Safe Mode'); mark('Real local crash handler redirected launch to Safe Mode')
     scrolltap('Import from File'); tap('Confirm')
-    nodes=screen()
-    if not find(nodes,'qa-restoration.zip'):
-        drawer_button=find(nodes,'Show roots') or find(nodes,'Show navigation drawer')
-        if drawer_button:
-            touch(drawer_button);tap('Downloads')
-    # Android 11 DocumentsUI uses a touch handler on the document row. Its title
-    # is a non-clickable child, and its preview icon opens a different action.
-    grid=screen()
-    toggle=find(grid,'List view')
-    if toggle: touch(toggle)
-    time.sleep(.8)
-    for operation in ('body','double','keyboard','long'):
-        nodes=screen()
-        if find(nodes,'Restart App'): break
-        confirm=find(nodes,'Open') or find(nodes,'Select')
-        if confirm and confirm.get('enabled')=='true': touch(confirm); continue
-        title=find(nodes,'qa-restoration.zip')
-        if title is None: break
-        x,y,r,b=map(int,re.findall(r'\d+',title['bounds']))
-        rects=[]
-        for n in nodes:
-            if not n.get('resource-id','').endswith('/item_root'): continue
-            left,top,right,bottom=map(int,re.findall(r'\d+',n['bounds']))
-            if left<=x<right and top<=y<bottom:
-                rects.append((left,top,right,bottom))
-        assert len(rects)==1,(title,rects)
-        left,top,right,bottom=rects[0]
-        # Stay in the center of the item's main surface, away from preview controls.
-        tx,ty=str((left+right)//2),str((top+bottom)//2)
-        print('Android picker',operation,rects[0],title['enabled'],flush=True)
-        if operation=='body': sh('input','tap',tx,ty)
-        if operation=='double': sh(f'input tap {tx} {ty}; input tap {tx} {ty}')
-        if operation=='keyboard':
-            sh('input','tap',tx,ty); key('KEYCODE_DPAD_CENTER')
-        if operation=='long': sh('input','swipe',tx,ty,tx,ty,'800')
-        time.sleep(1)
+    tap('Open synthetic recovery ZIP')
     tap('Restart App')
     time.sleep(1);launch();tap('Messages')
     wait('QA-Restored')
