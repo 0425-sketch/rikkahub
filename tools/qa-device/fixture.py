@@ -1,11 +1,10 @@
 """Disposable Google APIs AVD. All settings, credentials, and generated data are synthetic."""
 import base64
-import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
-import time
+import ssl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PKG = 'me.rerere.rikkahub.personal'
@@ -38,7 +37,7 @@ def seed():
     adb('shell','am','force-stop',PKG)
     base = f'http://127.0.0.1:{PORT}/v1'
     fields = {'providers':[{'type':'openai','id':'abc00000-0000-4000-8000-000000000002','name':'QA text','apiKey':'qa-fixture','baseUrl':base,'models':[{'id':MODEL,'modelId':'synthetic-text','displayName':'Mock text'}]}],
-              'media_generation_providers':[{'type':'openai','name':'QA OpenAI media','apiKey':'qa-fixture','baseUrl':base,'models':[{'modelId':'gpt-image-1','kind':'IMAGE','displayName':'Mock image'}]}],
+              'media_generation_providers':[{'type':'openai_platform_images','name':'QA OpenAI Platform','apiKey':'qa-fixture','models':[{'modelId':'gpt-image-2.6-sunburst','kind':'IMAGE','displayName':'Mock image'}]}],
               'chat_model':MODEL,'fast_model':MODEL,'prompt_enhancement_model':MODEL, 'display_setting':{'userNickname':'QA-Synthetic','showTokenUsage':True},
               'webdav_config':{'items':['DATABASE','FILES']}}
     entries = []
@@ -51,9 +50,25 @@ def seed():
 
 
 class Handler(BaseHTTPRequestHandler):
+    def log_message(self,*args):
+        pass
+
+    def do_CONNECT(self):
+        if self.path != 'api.openai.com:443' or self.headers.get('Proxy-Authorization'):
+            self.send_error(403)
+            return
+        directory=Path(os.environ['RUNNER_TEMP'])
+        ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(directory/'origin-leaf.pem',directory/'origin-leaf.key')
+        self.send_response_only(200);self.end_headers();self.wfile.flush()
+        with ctx.wrap_socket(self.connection,server_side=True) as stream:
+            stream.settimeout(30)
+            Handler(stream,self.client_address,self.server)
+        self.close_connection=True
+
     def do_POST(self):
         body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        if self.path == '/v1/chat/completions':
+        if self.path in ('/v1/chat/completions', f'http://127.0.0.1:{PORT}/v1/chat/completions'):
             prompt=body['messages'][-1]['content']
             text=prompt if isinstance(prompt,str) else str(prompt)
             content='Paint a QA blue square' if 'picture' in text else 'Polish the QA message'
@@ -68,7 +83,8 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 data=json.dumps(obj).encode()
                 ctype='application/json'
-        elif self.path == '/v1/images/generations' and body['prompt'] == 'Paint a QA blue square':
+        elif (self.path == '/v1/images/generations' and self.headers.get('Authorization') == 'Bearer qa-fixture'
+              and self.headers.get('Host') == 'api.openai.com' and body['prompt'] == 'Paint a QA blue square'):
             event='openai-image-generation'
             data=json.dumps({'created':100,'data':[{'b64_json':base64.b64encode(PNG).decode()}],'usage':{'total_tokens':7}}).encode()
             ctype='application/json'
@@ -88,4 +104,5 @@ if __name__=='__main__':
     if sys.argv[1]=='seed':
         seed()
     else:
-        ThreadingHTTPServer(('127.0.0.1',PORT),Handler).serve_forever()
+        port = PORT if sys.argv[1]=='serve' else PORT+1
+        ThreadingHTTPServer(('127.0.0.1',port),Handler).serve_forever()

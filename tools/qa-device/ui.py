@@ -95,7 +95,7 @@ def media():
     tap('Generate')
     event('openai-image-generation')
     time.sleep(2)
-    mark('OpenAI media provider accepted the enhanced prompt at fixture /v1/images/generations')
+    mark('OpenAI Platform adapter sent the enhanced prompt to the isolated TLS fixture /v1/images/generations')
 def export_backup():
     drawer(); tap('Settings'); scrolltap('Data Backup')
     # Touch the action's supporting line to distinguish it from a same-named group heading.
@@ -154,9 +154,16 @@ def rescue():
 if __name__=='__main__':
     assert sh('getprop','ro.kernel.qemu.avd_name')=='release_qa'
     try:
+        failed=[]
         for step in (prompt,media,export_backup,rescue):
             print('Running',step.__name__,flush=True)
-            step()
+            try:
+                step()
+            except Exception as exc:
+                failed.append(step.__name__)
+                print(str(exc),flush=True)
+                (OUT/(step.__name__+'-fail.png')).write_bytes(adb('exec-out','screencap','-p'))
+        if failed: raise AssertionError('Failed features: '+', '.join(failed))
     except BaseException:
         (OUT/'failed.png').write_bytes(adb('exec-out','screencap','-p'))
         try: print(labels(screen()),flush=True)

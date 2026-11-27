@@ -7,6 +7,10 @@ permissions:
   contents: read
 jobs:
   device:
+    strategy:
+      fail-fast: false
+      matrix:
+        apk: [baseline, candidate]
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     steps:
@@ -51,15 +55,23 @@ jobs:
           adb shell pidof me.rerere.rikkahub.personal
       - name: Prepare synthetic data and isolated model fixture
         run: |
+          bash tools/qa-device/model-origin.sh
           python3 tools/qa-device/fixture.py seed
+          python3 -u tools/qa-device/fixture.py tls > "$RUNNER_TEMP/origin.log" 2>&1 &
           python3 -u tools/qa-device/fixture.py serve > "$RUNNER_TEMP/fixture-server.log" 2>&1 &
+      - name: Install the exact signed Release candidate over the seeded old APK
+        if: matrix.apk == 'candidate'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tools/qa-device/candidate.sh
       - name: Run the feature controls on the installed APK
         run: python3 -u tools/qa-device/ui.py
       - name: Retain synthetic UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-device-evidence
+          name: qa-device-evidence-${{ matrix.apk }}
           path: |
             ${{ runner.temp }}/device-results
             ${{ runner.temp }}/fixture-events.jsonl
