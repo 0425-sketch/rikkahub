@@ -10,14 +10,32 @@ if [[ "$(cat "$RQA_CODE/mode")" == public ]]; then
     sleep 30
   done
   test "$seen" = true
-  curl -fsSL "https://api.github.com/repos/0425-sketch/rikkahub/releases/latest" -o "$RQA_DATA/latest.json"
-  jq -e '.name=="RikkaHub Release 209（Release 1）" and .draft==false and .prerelease==false' "$RQA_DATA/latest.json"
-  for name in build-provenance.json apk; do
-    url=$(jq -r --arg name "$name" '.assets[]|select((.name==$name) or ($name=="apk" and (.name|endswith("-arm64.apk"))))|.browser_download_url' "$RQA_DATA/latest.json")
-    dest=$name
-    if [[ $name == apk ]]; then dest=primary.apk; fi
-    curl -fsSL --retry 3 "$url" -o "$RQA_DATA/stage/$dest"
+  tag=${expected##*/}
+  file_origin="$repo_url/releases/download/$tag"
+  curl -fsSL --retry 3 "$file_origin/build-provenance.json" -o "$RQA_DATA/stage/build-provenance.json"
+  curl -fsSL --retry 3 "$file_origin/rikkahub-3.3.0-personal.10-f7d267a21e9b-arm64.apk" -o "$RQA_DATA/stage/primary.apk"
+  # This endpoint is also read by the unmodified 209 in the AVD. Respect the shared runner IP's
+  # anonymous quota, as indicated by GitHub itself, before asking the device to query it.
+  for attempt in {1..4}; do
+    status=$(curl -sS -D "$RQA_DATA/api-headers" -o "$RQA_DATA/api-meta" -w '%{http_code}' 'https://api.github.com/repos/0425-sketch/rikkahub/releases?per_page=100&page=1')
+    if [[ $status == 200 ]]; then
+      jq -e --arg tag "$tag" 'any(.[]; .tag_name==$tag and .name=="RikkaHub Release 209（Release 1）" and .draft==false and .prerelease==false)' "$RQA_DATA/api-meta" && break
+      sleep 10
+      continue
+    fi
+    echo "Public API HTTP $status"
+    jq -r '.message' "$RQA_DATA/api-meta"
+    awk 'tolower($1)~/^x-ratelimit-(limit|remaining|reset):$|^retry-after:$/ {print}' "$RQA_DATA/api-headers" | tr -d '\r'
+    seconds=$(python - "$RQA_DATA/api-headers" <<'READ'
+import sys,time
+headers=dict(line.strip().lower().split(': ',1) for line in open(sys.argv[1]) if ': ' in line)
+print(max(15,int(headers.get('retry-after','0')),int(headers.get('x-ratelimit-reset','0'))-int(time.time())+5))
+READ
+)
+    if [[ $status != 403 && $status != 429 ]]; then exit 1; fi
+    sleep "$seconds"
   done
+  test "$status" = 200
   hash=$(jq -er '.apk_sha256' "$RQA_DATA/stage/build-provenance.json")
   echo "$hash  $RQA_DATA/stage/primary.apk" | sha256sum -c -
   exit 0
