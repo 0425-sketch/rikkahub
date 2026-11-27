@@ -43,7 +43,7 @@ def run(case,original):
     note=d/(case+'.txt')
     note.write_text(f"Offline probe {case}\n\n<!-- rikkahub-personal-version-code: {p['version_code']} -->")
     flow.expected_notice='Offline probe '+case;flow.version=p['version_name']
-    log=P/'fixture.log';pos=log.stat().st_size
+    log=P/'fixture.log';log.touch(exist_ok=True);pos=log.stat().st_size
     def seen():
         with log.open('rb') as f:
             f.seek(pos)

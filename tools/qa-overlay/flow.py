@@ -63,11 +63,18 @@ def grant_install():
         if 'package:'+source in packages:shell('appops set '+source+' REQUEST_INSTALL_PACKAGES allow')
 def install(code):
     expected=f'versionCode={code} '
-    attempts=0
+    attempts=0; observed=None
     def step(ns):
-        nonlocal attempts
+        nonlocal attempts,observed
         attempts+=1
-        if expected in shell('dumpsys package '+PKG):return True
+        if expected in shell('dumpsys package '+PKG):
+            if observed is None:observed=time.monotonic()
+            open_app=first(ns,lambda x:x.strip().lower()=='open')
+            if open_app is not None:
+                print('Android confirmed installation',summary(ns),flush=True)
+                tap(open_app);time.sleep(1);return True
+            if time.monotonic()-observed>12:return True
+            return None
         labels=summary(ns)
         if any(('not installed' in l.lower() or 'problem parsing' in l.lower()) for l in labels):
             raise AssertionError(labels)
@@ -122,12 +129,16 @@ def downloads(apk):
         return None
     uiwait(from_files,60)
 def ready():
-    launch()
-    until=time.monotonic()+80
-    while time.monotonic()<until:
-        try:req('/conversations');return
-        except Exception:time.sleep(2)
-    raise AssertionError('app loopback server failed to start')
+    for attempt in range(3):
+        if attempt:
+            print('Relaunching the already installed package',shell('dumpsys activity activities | grep mResumedActivity | head -1'),flush=True)
+            shell('am force-stop '+PKG)
+        print(shell('am start -W -n '+PKG+'/me.rerere.rikkahub.RouteActivity'),flush=True)
+        until=time.monotonic()+20
+        while time.monotonic()<until:
+            try:req('/conversations');return
+            except Exception:time.sleep(1)
+    raise AssertionError('app loopback server failed to start after normal relaunch')
 if __name__=='__main__':
     confirm()
     mode=sys.argv[1];stage=P/'stage';grant_install()
