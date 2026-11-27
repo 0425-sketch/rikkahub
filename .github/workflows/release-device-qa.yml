@@ -1,0 +1,46 @@
+name: Disposable emulator Release acceptance
+on:
+  push:
+    branches: [qa/release-device-209]
+    paths: ['.github/workflows/release-device-qa.yml', 'tools/qa-device/**']
+permissions:
+  contents: read
+jobs:
+  device:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Boot an isolated Google APIs emulator
+        run: |
+          set -eu
+          test -c /dev/kvm
+          sudo chmod 666 /dev/kvm
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'emulator' 'platform-tools' 'system-images;android-30;google_apis;x86_64'
+          echo no | avdmanager create avd -n release_qa -k 'system-images;android-30;google_apis;x86_64' -d pixel_2
+          "$ANDROID_HOME/emulator/emulator" -avd release_qa -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on -memory 2304 > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          adb wait-for-device
+          timeout 420 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 4; done'
+          adb shell input keyevent 82
+          adb shell wm size 720x1440
+          adb shell wm density 260
+          for scale in window_animation_scale transition_animation_scale animator_duration_scale; do adb shell settings put global "$scale" 0; done
+          adb shell getprop ro.product.cpu.abilist | grep arm64-v8a
+      - name: Install and launch the original published Debug 209
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          cd "$RUNNER_TEMP"
+          tag=custom-3.3.0-personal-590dca0ef8ca-45763808599-1
+          apk=rikkahub-3.3.0-personal.9-590dca0ef8ca-arm64.apk
+          gh release download "$tag" -p "$apk"
+          echo "de0657f2ee1d08e2ae9bac27ce8f36e67c7e9bf8ab3a4c57f2073d9e4f24af8b  $apk" | sha256sum -c -
+          adb install "$apk"
+          adb shell am start -W -n me.rerere.rikkahub.personal/me.rerere.rikkahub.RouteActivity
+          adb shell dumpsys package me.rerere.rikkahub.personal | grep -E 'versionCode=|versionName=|primaryCpuAbi='
+          adb shell pidof me.rerere.rikkahub.personal
