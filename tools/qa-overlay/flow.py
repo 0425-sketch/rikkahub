@@ -152,6 +152,11 @@ if __name__=='__main__':
     expected_notice='非公开覆盖升级测试候选' if code==211 else 'RikkaHub Release 209'
     apk=stage/('next-candidate.apk' if code==211 else 'primary.apk')
     loc=(P/'next') if code==211 else stage
+    if mode=='public':
+        proxy=shell('settings get global http_proxy').strip()
+        assert proxy in ('', 'null', ':0'), proxy
+        assert not (P/'fixture.log').exists()
+        print('Fresh AVD has no fixture or proxy. Public GitHub source:', 'https://api.github.com/repos/0425-sketch/rikkahub/releases',flush=True)
     proc=start(None if mode=='public' else (loc/'build-provenance.json', apk,loc/'release-notes.txt'))
     try:
         if code==210:downloads(apk)

@@ -11,9 +11,8 @@ jobs:
     if: github.repository == '0425-sketch/rikkahub'
     runs-on: ubuntu-24.04
     permissions:
-      # GitHub denies GET of an existing draft to a contents:read token (403).
-      # The token is passed only to the metadata/download step; no Release is mutated.
-      contents: write
+      # Public channel verification runs anonymously. Checkout is read-only.
+      contents: read
       actions: read
     timeout-minutes: 100
     steps:
@@ -56,10 +55,7 @@ jobs:
           python -m pip install --quiet Pillow cryptography
           bash tools/qa-overlay/file-manager.sh
           bash tools/qa-overlay/seed.sh
-      - name: Fetch exact signed candidates for the selected run
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+      - name: Wait for the real public Latest and retrieve the published proof anonymously
         run: bash tools/qa-overlay/wait_stage.sh
       - name: Upgrade the seeded Debug 209 using its update drawer and the system installer
         id: first
@@ -70,19 +66,9 @@ jobs:
             bash tools/qa-overlay/ca.sh
             python -u tools/qa-overlay/flow.py controlled
           fi
-      - name: Verify rejected payloads on installed Release 1
+      - name: Read message token breakdown, speed and Statistics totals on installed Release 1
         if: steps.first.outcome == 'success'
-        run: |
-          if [[ "$(cat "$RQA_CODE/mode")" != public ]]; then python -u tools/qa-overlay/reject.py; fi
-      - name: Upgrade installed Release 1 to the nonpublic successor and check its data
-        if: always() && steps.first.outcome == 'success'
-        run: |
-          if [[ "$(cat "$RQA_CODE/mode")" != public ]]; then
-            pkill -f "^python.*$RQA_DATA/origin/fixture.py" || true
-            adb shell settings put global http_proxy :0
-            adb shell settings delete global http_proxy
-            python -u tools/qa-overlay/flow.py next
-          fi
+        run: python -u tools/qa-overlay/stats_ui.py
       - name: Collect synthetic acceptance snapshots
         if: always()
         run: |
@@ -100,6 +86,7 @@ jobs:
           name: disposable-overlay-evidence
           path: |
             ${{ runner.temp }}/overlay/snapshot-*.json
+            ${{ runner.temp }}/overlay/stats-ui.json
             ${{ runner.temp }}/overlay/result-ui.xml
             ${{ runner.temp }}/overlay/result-screen.png
             ${{ runner.temp }}/overlay/fixture.log

@@ -1,6 +1,15 @@
 set -euo pipefail
 if [[ "$(cat "$RQA_CODE/mode")" == public ]]; then
   mkdir -p "$RQA_DATA/stage"
+  repo_url=https://github.com/0425-sketch/rikkahub
+  expected="$repo_url/releases/tag/custom-3.3.0-personal-f7d267a21e9b-45947662246-1"
+  seen=false
+  for attempt in {1..90}; do
+    location=$(curl --silent --show-error -I -o /dev/null -w '%{redirect_url}' --connect-timeout 10 --max-time 20 "$repo_url/releases/latest" || true)
+    if [ "$location" = "$expected" ]; then seen=true; break; fi
+    sleep 30
+  done
+  test "$seen" = true
   curl -fsSL "https://api.github.com/repos/0425-sketch/rikkahub/releases/latest" -o "$RQA_DATA/latest.json"
   jq -e '.name=="RikkaHub Release 209（Release 1）" and .draft==false and .prerelease==false' "$RQA_DATA/latest.json"
   for name in build-provenance.json apk; do
