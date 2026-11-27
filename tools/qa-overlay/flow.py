@@ -21,18 +21,21 @@ def uiwait(predicate,seconds=90):
         time.sleep(1)
     raise AssertionError(f'UI timeout: {last} {error}')
 def first(ns,fn):return next((n for n in ns if fn(label(n))),None)
-def start(fixture):
+def activate(fixture, extra=()):
     if fixture:
         proof,apk,notes=fixture
         origin=P/'origin'/'fixture.py'
         log=(P/'fixture.log').open('ab')
-        proc=sp.Popen([sys.executable,'-u',origin,'--proof',proof,'--apk',apk,'--notes',notes],stdout=log,stderr=log)
+        proc=sp.Popen([sys.executable,'-u',origin,'--proof',proof,'--apk',apk,'--notes',notes,*extra],stdout=log,stderr=log)
         time.sleep(1)
         assert proc.poll() is None, (P/'fixture.log').read_text()
         shell('settings put global http_proxy 127.0.0.1:18734')
     else:proc=None
     shell('am force-stop '+PKG)
     launch()
+    return proc
+def start(fixture, extra=()):
+    proc=activate(fixture,extra)
     def card(ns):
         k=first(ns,lambda x: x.startswith('New version found '+version))
         if k is not None:return k

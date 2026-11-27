@@ -62,6 +62,7 @@ jobs:
           else
             bash tools/qa-overlay/ca.sh
             python -u tools/qa-overlay/flow.py controlled
+            python -u tools/qa-overlay/reject.py
             python -u tools/qa-overlay/flow.py next
           fi
       - name: Collect synthetic acceptance snapshots

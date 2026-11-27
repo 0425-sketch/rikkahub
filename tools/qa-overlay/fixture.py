@@ -15,6 +15,7 @@ parser.add_argument('--init-ca',action='store_true')
 parser.add_argument('--proof',type=pathlib.Path)
 parser.add_argument('--apk',type=pathlib.Path)
 parser.add_argument('--notes',type=pathlib.Path)
+parser.add_argument('--foreign-url',action='store_true',help='Offer a non-repository APK URL to test source rejection. Never fetch it.')
 parser.add_argument('--port',type=int,default=18734)
 parser.add_argument('--corrupt-download',type=pathlib.Path,help='Negative case only. Replaces bytes after validating canonical metadata against --apk.')
 args=parser.parse_args()
@@ -61,6 +62,8 @@ def file_digest(path):
 assert args.apk.stat().st_size==p['apk_size'] and file_digest(args.apk)==p['apk_sha256']
 prefix='/'+REPO+'/releases/download/'+p['tag']+'/'
 assets=[dict(name=n,state='uploaded',browser_download_url='https://github.com'+prefix+n,size=f.stat().st_size,digest='sha256:'+file_digest(f)) for n,f in ((fn,args.apk),('build-provenance.json',args.proof))]
+if args.foreign_url:
+    assets[0]['browser_download_url']='https://example.invalid/untrusted.apk'
 release=dict(tag_name=p['tag'],target_commitish=p['source_commit'],draft=False,prerelease=False,published_at=datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00','Z'),body=body,assets=assets)
 routes={('api.github.com',FEED):('releases',json.dumps([release],ensure_ascii=False).encode(),'application/json'),
         ('github.com',prefix+'build-provenance.json'):('provenance',args.proof,'application/json'),
