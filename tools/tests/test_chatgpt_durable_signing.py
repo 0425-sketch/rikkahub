@@ -470,15 +470,10 @@ class SigningEntrypointAuthorizationTest(unittest.TestCase):
             for operation in dispatch.values():
                 operation.assert_not_called()
 
-    def test_artifact_branch_can_only_restore_either_existing_signer(self):
+    def test_default_branch_can_restore_both_existing_signers(self):
         for source in ("primary", "backup"):
             with self.subTest(source=source):
-                self.invoke("restore", "refs/heads/migration/release-209", source=source, allowed=True)
-
-    def test_artifact_branch_cannot_bootstrap_or_retire_secrets(self):
-        for command in ("bootstrap", "retire-setup-token"):
-            with self.subTest(command=command):
-                self.invoke(command, "refs/heads/migration/release-209")
+                self.invoke("restore", "refs/heads/custom-3.2.0", source=source, allowed=True)
 
     def test_original_custom_branch_keeps_existing_command_permissions(self):
         for command in ("bootstrap", "restore", "retire-setup-token"):
@@ -486,17 +481,15 @@ class SigningEntrypointAuthorizationTest(unittest.TestCase):
                 self.invoke(command, "refs/heads/custom-3.2.0", allowed=True)
 
     def test_unrelated_branches_tags_and_pull_requests_never_reach_signer(self):
-        for ref in ("refs/heads/master", "refs/heads/migration/release-209-other",
+        for ref in ("refs/heads/master", "refs/heads/migration/release-209",
                     "refs/tags/migration/release-209", "refs/pull/1/merge", ""):
             for command in ("bootstrap", "restore", "retire-setup-token"):
                 with self.subTest(ref=ref, command=command):
                     self.invoke(command, ref)
 
     def test_expected_ref_still_requires_correct_repository_and_actions(self):
-        for ref in ("refs/heads/custom-3.2.0", "refs/heads/migration/release-209"):
-            with self.subTest(ref=ref):
-                self.invoke("restore", ref, repo="another-owner/rikkahub")
-                self.invoke("restore", ref, actions="false")
+        self.invoke("restore", "refs/heads/custom-3.2.0", repo="another-owner/rikkahub")
+        self.invoke("restore", "refs/heads/custom-3.2.0", actions="false")
 
 
 if __name__ == "__main__":

@@ -433,13 +433,9 @@ def main():
     parser.add_argument("--source", choices=tuple(SECRET_NAMES))
     parser.add_argument("--verification", type=Path)
     args = parser.parse_args()
-    allowed_refs = {"refs/heads/custom-3.2.0"}
-    if args.command == "restore":
-        # Artifact-only builds can recover the pinned signer, but cannot provision,
-        # replace, or retire any stored secret. Keep this a single exact branch.
-        allowed_refs.add("refs/heads/migration/release-209")
-    if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != REPO or os.environ.get("GITHUB_REF") not in allowed_refs:
-        fail("ENVIRONMENT", "Signer commands require this repository's authorized Actions branch; the artifact branch permits restoration only.")
+    if (os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != REPO
+            or os.environ.get("GITHUB_REF") != "refs/heads/custom-3.2.0"):
+        fail("ENVIRONMENT", "Signer commands require the personal repository's default Actions branch.")
     identity = read_identity(args.identity, require_certificate=args.command != "bootstrap")
     if args.command == "retire-setup-token":
         if args.verification is None:

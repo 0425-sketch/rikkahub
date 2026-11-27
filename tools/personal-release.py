@@ -29,7 +29,6 @@ BASELINE_CODE = 209
 RELEASE_NUMBER = VERSION_CODE - BASELINE_CODE
 TITLE = "RikkaHub Release 209（Release 1）" if RELEASE_NUMBER == 1 else f"RikkaHub Release {RELEASE_NUMBER}"
 BRANCH = "custom-3.2.0"
-QA_BRANCH = "migration/release-209"
 PERSONAL_TAG = re.compile(r"custom-\d+\.\d+\.\d+-personal-[a-f0-9]{12}-\d+-\d+")
 VERSION_HINT = re.compile(r"^<!-- rikkahub-personal-version-code: ([1-9]\d*) -->\r?$", re.M)
 IDENTITY_FILE = Path(__file__).resolve().parents[1] / "docs/chatgpt-personal-signing.json"
@@ -317,12 +316,12 @@ def main():
 
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != REPO:
         delivery.fail("AUTH", "The release workflow must run in the personal repository.")
-    if os.environ.get("GITHUB_SHA") != source_sha or os.environ["GITHUB_REF_NAME"] not in (BRANCH, QA_BRANCH):
-        delivery.fail("SOURCE", "Checkout must match the exact trusted workflow commit.")
+    if (os.environ.get("GITHUB_SHA") != source_sha or os.environ.get("GITHUB_REF") != f"refs/heads/{BRANCH}"
+            or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"):
+        delivery.fail("SOURCE", "Run the workflow manually on the default branch at the exact build commit.")
     run_id, attempt = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"]
     if args.promote:
-        if (os.environ["GITHUB_REF_NAME"] != BRANCH or os.environ["GITHUB_EVENT_NAME"] != "workflow_dispatch"
-                or args.tested_sha256 != metadata["apk_sha256"] or args.staged_files is None):
+        if args.tested_sha256 != metadata["apk_sha256"] or args.staged_files is None:
             delivery.fail("ACCEPTANCE", "Promotion must name the tested candidate digest on the default branch.")
         run_id, attempt = args.stage_run, args.stage_attempt
     if not run_id or not attempt or not re.fullmatch("[1-9][0-9]*", run_id) or not re.fullmatch("[1-9][0-9]*", attempt):
@@ -333,7 +332,7 @@ def main():
     if args.promote:
         stage = delivery.api_json(f"repos/{REPO}/actions/runs/{run_id}/attempts/{attempt}", env)
         if (stage.get("id") != int(run_id) or stage.get("run_attempt") != int(attempt) or stage.get("head_sha") != source_sha
-                or stage.get("head_branch") not in (QA_BRANCH, BRANCH) or stage.get("conclusion") != "success"
+                or stage.get("head_branch") != BRANCH or stage.get("event") != "workflow_dispatch" or stage.get("conclusion") != "success"
                 or stage.get("path") != ".github/workflows/chatgpt-test-apk.yml"):
             delivery.fail("SOURCE", "Staging run must have succeeded for this exact build commit and workflow.")
     if not all((args.recovery_apk, args.primary_receipt, args.backup_receipt)):

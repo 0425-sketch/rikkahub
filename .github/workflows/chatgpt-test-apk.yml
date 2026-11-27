@@ -1,8 +1,5 @@
 name: Personal Release · stage or publish a tested ARM64 APK
 'on':
-  push:
-    branches:
-    - migration/release-209
   workflow_dispatch:
     inputs:
       operation:
@@ -29,7 +26,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   validate:
-    if: github.repository == '0425-sketch/rikkahub' && (github.ref_name == 'custom-3.2.0' || github.ref_name == 'migration/release-209') && (github.event_name == 'push' || inputs.operation == 'stage')
+    if: github.repository == '0425-sketch/rikkahub' && github.ref == 'refs/heads/custom-3.2.0' && github.event_name == 'workflow_dispatch' && inputs.operation == 'stage'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -133,7 +130,7 @@ jobs:
   signed-build:
     name: Restore and build (${{ matrix.source }})
     needs: qa-draft
-    if: github.repository == '0425-sketch/rikkahub' && (github.ref_name == 'custom-3.2.0' || github.ref_name == 'migration/release-209') && (github.event_name == 'push' || inputs.operation == 'stage')
+    if: github.repository == '0425-sketch/rikkahub' && github.ref == 'refs/heads/custom-3.2.0' && github.event_name == 'workflow_dispatch' && inputs.operation == 'stage'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -268,7 +265,7 @@ jobs:
       contents: write
   publish:
     name: Publish previously accepted bytes as Latest
-    if: github.repository == '0425-sketch/rikkahub' && github.ref_name == 'custom-3.2.0' && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish'
+    if: github.repository == '0425-sketch/rikkahub' && github.ref == 'refs/heads/custom-3.2.0' && github.event_name == 'workflow_dispatch' && inputs.operation == 'publish'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -319,7 +316,7 @@ jobs:
         retention-days: 14
   qa-draft:
     name: Open a collaborator-only draft for device tests
-    if: github.repository == '0425-sketch/rikkahub' && (github.ref_name == 'custom-3.2.0' || github.ref_name == 'migration/release-209') && (github.event_name == 'push' || inputs.operation == 'stage')
+    if: github.repository == '0425-sketch/rikkahub' && github.ref == 'refs/heads/custom-3.2.0' && github.event_name == 'workflow_dispatch' && inputs.operation == 'stage'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -335,7 +332,7 @@ jobs:
       run: python3 tools/release_delivery.py
   prepare:
     name: Verify both restores and prepare the 209-compatible feed files
-    if: github.repository == '0425-sketch/rikkahub' && (github.ref_name == 'custom-3.2.0' || github.ref_name == 'migration/release-209') && (github.event_name == 'push' || inputs.operation == 'stage')
+    if: github.repository == '0425-sketch/rikkahub' && github.ref == 'refs/heads/custom-3.2.0' && github.event_name == 'workflow_dispatch' && inputs.operation == 'stage'
     needs:
     - signed-build
     - validate

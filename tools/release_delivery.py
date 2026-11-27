@@ -130,7 +130,7 @@ def stage_draft(paths, env):
     repo = "0425-sketch/rikkahub"
     run, attempt, source = (env[key] for key in ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_SHA"))
     if (env.get("GITHUB_ACTIONS") != "true" or env.get("GITHUB_REPOSITORY") != repo
-            or env.get("GITHUB_REF_NAME") not in ("custom-3.2.0", "migration/release-209")
+            or env.get("GITHUB_REF") != "refs/heads/custom-3.2.0" or env.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
             or not run.isdecimal() or not attempt.isdecimal() or not re.fullmatch(r"[0-9a-f]{40}", source)):
         fail("SOURCE", "Staging is restricted to the authorized workflow and exact build commit.")
     tag = f"qa-personal-{run}-{attempt}"

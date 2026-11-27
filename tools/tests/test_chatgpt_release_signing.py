@@ -61,13 +61,19 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
         return {"jobs": [{"id": i + 1, "name": f"Restore and build ({role})", "runner_id": 10 if same_runner else 10 + i,
                           "status": "completed", "conclusion": "success"} for i, role in enumerate(("primary", "backup"))]}
 
-    def invoke(self, directory, primary=None, backup=None, receipts=None, pin=CERT, verify_only=False):
+    def invoke(self, directory, primary=None, backup=None, receipts=None, pin=CERT, verify_only=False,
+               ref="refs/heads/custom-3.2.0", event="workflow_dispatch", promote=False):
         arguments = ["personal-release.py", "--apk", str(directory / "primary.apk"), "--build-tools", str(directory),
                      "--output", str(directory / "evidence")]
         if verify_only:
             arguments.append("--verify-only")
         else:
-            arguments += ["--prepare", "--recovery-apk", str(directory / "backup.apk"),
+            if promote:
+                arguments += ["--promote", "--stage-run", "1", "--stage-attempt", "1", "--tested-sha256", "0"*64,
+                              "--staged-files", str(directory)]
+            else:
+                arguments.append("--prepare")
+            arguments += ["--recovery-apk", str(directory / "backup.apk"),
                           "--primary-receipt", str(directory / "primary.json"), "--backup-receipt", str(directory / "backup.json")]
             for role in ("primary", "backup"):
                 (directory / f"{role}.json").write_text(json.dumps((receipts or {}).get(role, self.receipt(role))))
@@ -77,9 +83,38 @@ class ChatGPTReleaseSigningTest(unittest.TestCase):
              patch.object(release.subprocess, "check_output", return_value=SHA + "\n"), \
              patch.object(release.sys, "argv", arguments), \
              patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": release.REPO,
-                 "GITHUB_REF_NAME": "custom-3.2.0", "GITHUB_SHA": SHA, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
+                 "GITHUB_REF": ref, "GITHUB_EVENT_NAME": event, "GITHUB_SHA": SHA, "GITHUB_RUN_ID": "1", "GITHUB_RUN_ATTEMPT": "1",
                  "GITHUB_TOKEN": "synthetic-test-token-never-sent"}), contextlib.redirect_stdout(io.StringIO()):
             release.main()
+
+    def test_only_default_branch_manual_runs_can_prepare_or_publish(self):
+        for ref, event in (("refs/heads/migration/release-209", "workflow_dispatch"),
+                           ("refs/tags/custom-3.2.0", "workflow_dispatch"), ("refs/heads/custom-3.2.0", "push")):
+            for promote in (False, True):
+                with self.subTest(ref=ref, event=event, promote=promote), tempfile.TemporaryDirectory() as tmp, \
+                     patch.object(release.delivery, "gh") as gh, self.assertRaisesRegex(release.delivery.DeliveryError, "SOURCE"):
+                    self.invoke(Path(tmp), ref=ref, event=event, promote=promote)
+                gh.assert_not_called()
+
+    def test_only_default_branch_manual_runs_can_upload_qa_assets(self):
+        env = {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": release.REPO, "GITHUB_RUN_ID": "1",
+               "GITHUB_RUN_ATTEMPT": "1", "GITHUB_SHA": SHA, "GITHUB_REF": "refs/heads/custom-3.2.0",
+               "GITHUB_EVENT_NAME": "workflow_dispatch"}
+        for change in ({"GITHUB_REF": "refs/heads/migration/release-209"}, {"GITHUB_EVENT_NAME": "push"}):
+            with self.subTest(**change), patch.object(release.delivery, "gh") as gh, \
+                 self.assertRaisesRegex(release.delivery.DeliveryError, "SOURCE"):
+                release.delivery.stage_draft([], {**env, **change})
+            gh.assert_not_called()
+
+    def test_promotion_rejects_staging_run_from_old_migration_branch_or_push(self):
+        stage = {"id": 1, "run_attempt": 1, "head_sha": SHA, "head_branch": release.BRANCH,
+                 "conclusion": "success", "path": ".github/workflows/chatgpt-test-apk.yml", "event": "workflow_dispatch"}
+        for change in ({"head_branch": "migration/release-209"}, {"event": "push"}):
+            with self.subTest(**change), tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(release.delivery, "api_json", return_value={**stage, **change}), \
+                 patch.object(release.delivery, "gh") as gh, self.assertRaisesRegex(release.delivery.DeliveryError, "SOURCE"):
+                self.invoke(Path(tmp), promote=True)
+            gh.assert_not_called()
 
     def test_unpinned_identity_cannot_publish(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(release.delivery, "gh") as gh:
