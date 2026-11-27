@@ -8,12 +8,12 @@ Debug 209 是最后一个面向用户的 Debug 版本。第一次正式版的标
 
 ## 制作并发布正式 APK
 
-1. 在默认分支 `custom-3.2.0` 的发布提交更新 `gradle.properties` 中的 `personalVersionCode` 与 `personalVersionName`。先检查已发布同包版本。两者继续递增，版本名沿用 `X.Y.Z-personal.N`。
-2. 在 Actions 打开 **Personal Release · stage or publish a tested ARM64 APK**，选择默认分支及 `stage`。两台干净的 GitHub 托管运行器分别下载并核验原始 209，恢复固定签名，构建优化后的 GitHub Release。候选、备用恢复校验用 APK 和高一版的升级测试包暂存在仅仓库协作者可见的 `qa-personal-<run>-<attempt>` 草稿。该草稿由工作流管理。
+1. 在默认分支 `custom-3.2.0` 的发布提交更新 `gradle.properties` 中的 `personalVersionCode` 与 `personalVersionName`。先检查已发布同包版本。两者继续递增，版本名沿用 `X.Y.Z-personal.N`。本次公开版本为 210。若期间没有发布其他版本，Release 2 使用 211 和 `3.3.0-personal.11`。
+2. 在 Actions 手动打开 **Personal Release · stage or publish a tested ARM64 APK**，选择默认分支及 `stage`。两台干净的 GitHub 托管运行器分别下载并核验原始 209，恢复固定签名，构建优化后的 GitHub Release。候选、备用恢复校验用 APK 和高一版的升级测试包暂存在仅仓库协作者可见的 `qa-personal-<run>-<attempt>` 草稿。该草稿由工作流管理。正常推送代码不会启动 APK 发布流程。
 3. 在独立测试设备上用原始已发布版本建立虚构聊天、图片、记忆、设置和用量。在受控测试源按草稿中的正式元数据测试发现与下载，对照主候选的 SHA-256，再覆盖安装并检查保留的数据。用高一版的非公开候选从正式包再走一次发现、下载、系统安装和数据复核。记录包名、签名、版本、数据验证、测试源和实际用到的服务。
 4. 验收通过后，在同一构建提交的默认分支再次运行该工作流，选择 `publish`，填写原始 `stage_run`、`stage_attempt` 和已在设备上验收的主 APK 的 `tested_sha256`。工作流复用该 APK，验证两次独立恢复，上传 APK、校验和、恢复证明及构建证明，正式发布为 Latest 并回读。随后使用原始旧版复核线上发现、下载与系统覆盖安装。
 
-已安装 209 的用户打开聊天侧栏，点新版本卡片，查看说明后点 ARM64 APK。下载完成后点系统下载通知，或到「下载」打开该 APK，在系统界面选择「更新」。Android 首次提示时可为打开 APK 的来源允许安装。保留原安装和数据即可。新用户从最新正式发布页选择 ARM64 APK。[稳定版下载页](https://github.com/0425-sketch/rikkahub/releases/latest)
+已安装 209 的用户打开聊天侧栏，点新版本卡片，查看说明后点 ARM64 APK。下载完成后，用手机的文件管理器进入内部存储的「Download／下载」，点开该 APK，选择系统软件包安装程序，再点「更新」或「安装」。Android 若提示安装权限，为这个文件管理器允许安装应用后返回即可。在验收用的 Android 11 上，点下载通知会回到旧 App，通过文件管理器可以完成覆盖安装。保留原安装和数据即可。新用户从最新正式发布页选择 ARM64 APK。[稳定版下载页](https://github.com/0425-sketch/rikkahub/releases/latest)
 
 ## 恢复固定签名
 

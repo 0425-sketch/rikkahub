@@ -1,5 +1,23 @@
 # ChatGPT 官方 OAuth 迁移与 APK 交付进度
 
+## Release 209（Release 1）· 210 / 3.3.0-personal.10
+
+本次正式版承接 Debug 209 的安装身份。功能基线为 `590dca0ef8ca2ea3b6d9bd45d345717e5294b013`，R8 Release 的构建提交为 `f7d267a21e9b95220014c6607e3602ef1470119c`。默认分支保留原有历史。今后维护者和普通用户共用同一稳定渠道。首发完成后已关闭迁移分支临时构建入口，后续只从默认分支手动准备和发布。 [维护和签名恢复步骤](personal-release.md)
+
+原始 Debug 209 与正式包均为 ARM64，包名 `me.rerere.rikkahub.personal`，APK 签名证书 SHA-256 为 `882c1cc87ccf36c2ac5eb178b8d8ef13ff74a3ac8b759b41aed6e48bddb4e1fd`。正式包 15,932,665 字节，SHA-256 为 `58f6e3933dcbec20567e0eac812bbe1e5591da94dafd07c4d6e543f76b57f8fb`。主、副备份在两台独立运行器恢复并验证，供公开下载的字节来自主签构建。[发布源码](https://github.com/0425-sketch/rikkahub/commit/f7d267a21e9b95220014c6607e3602ef1470119c) · [签名构建和测试](https://github.com/0425-sketch/rikkahub/actions/runs/45947662246)
+
+真实 Release 依赖树、合并与已签 APK 的 Manifest、资源表和 DEX 已核查。Firebase Analytics、Crashlytics 及 Google Services 生成的资源已移除。DEX 含 R8 编译标记，构建产生裁剪清单并核对最终规则。九模块 JVM 回归共 1,343 项，1,342 项通过，1 项缺少可选的私人 DeepSeek 样本而跳过，另有 57 项 Python 校验通过，Android 仪器测试代码编译成功。
+
+发布前，在 Android 11 测试设备上安装原始 209，建立虚构聊天、图片、记忆、昵称和用量。用受控更新源连续完成 209 → 210 → 211 两次 App 内发现、下载和系统覆盖安装。三版的 UID、首次安装时间、数据目录、图片摘要和 SIWC 本地安装标识一致。Room 保持版本 35，用量记录从 1 条增至 4 条，只有输入用量的样本保留了缺失的输出字段。错签、错包、错误摘要、旧 APK、错误来源和降级元数据均被拒绝。211 只用于非公开验收。[连续升级与拒绝路径](https://github.com/0425-sketch/rikkahub/actions/runs/45951612441)
+
+在实际签名的 R8 包上，测试设备验证了启动、流式聊天、聊天与生图提示词增强、OpenAI 生图适配器、普通备份，以及从测试崩溃进入安全模式并恢复备份。对模型和生图接口使用受控响应。SIWC 打开了官方授权页，真实账号登录、原会话令牌刷新和真实服务生成仍须有授权的测试账号复核。[R8 设备验收](https://github.com/0425-sketch/rikkahub/actions/runs/45951686659)
+
+2026-11-27 06:32 UTC 已发布为 Latest，正式下载的 APK 与发布前验收的文件逐字节一致。Debug 209 的 tag 和原附件均已回读核对。[正式发布](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-f7d267a21e9b-45947662246-1) · [ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-f7d267a21e9b-45947662246-1/rikkahub-3.3.0-personal.10-f7d267a21e9b-arm64.apk) · [构建证明](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-f7d267a21e9b-45947662246-1/build-provenance.json) · [发布运行](https://github.com/0425-sketch/rikkahub/actions/runs/45952397765)
+
+发布后又在另一台干净的 Android 11 模拟器上安装原始 209。旧 App 在聊天侧栏从真实 GitHub 渠道显示这份正式版的说明，系统下载管理器记录的来源为发布页的 ARM64 APK。下载文件经文件管理器交给系统安装程序后，原 UID、首次安装时间、聊天、图片、记忆、昵称和历史用量全部保留，新请求继续累计。该作业的公开安装步骤通过，随后的单窗口界面采集漏读消息浮层，已在下述独立作业中改为读取所有 Android 窗口并用截图复核。[公开渠道的设备安装记录](https://github.com/0425-sketch/rikkahub/actions/runs/45952716820/job/140352037230#step:7:1)
+
+在签名正式包的统计页，三次输入 120（含缓存 30）、输出 20 的已知响应，加上一次仅报告输入 77 的响应，合计显示输入 437、输出至少 60、缓存至少 90。缓存命中率 25.0%，界面标明只计入四次请求中同时报告输入与缓存读取的三次。完整样本的消息行显示上下文 140、缓存 30 和本次测试的生成速度 4.4 tok/s。展开明细后显示未缓存输入 90、缓存 30、输出 20。缺失样本的上下文与缓存显示未知。[正式包的消息明细和统计页](https://github.com/0425-sketch/rikkahub/actions/runs/45953702726)
+
 ## 默认分支开发基线与最新签名版 · 209 / 3.3.0-personal.9（2026-11-26 UTC）
 
 209 已于 06:01 UTC 发布到自用更新渠道。主界面无法打开但仍能进入安全模式时，可以导出已落盘的聊天、记忆、媒体和设置，也可以从兼容的 ZIP 恢复。普通页和安全页共用本地文件写入校验，旧生图库原图也纳入备份。恢复含设置的备份后需要重新授权 ChatGPT。[ARM64 APK](https://github.com/0425-sketch/rikkahub/releases/download/custom-3.3.0-personal-590dca0ef8ca-45763808599-1/rikkahub-3.3.0-personal.9-590dca0ef8ca-arm64.apk) · [发布页](https://github.com/0425-sketch/rikkahub/releases/tag/custom-3.3.0-personal-590dca0ef8ca-45763808599-1)
