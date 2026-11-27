@@ -80,6 +80,13 @@ def install(code):
             raise AssertionError(labels)
         if attempts%3==1:
             print('System surface',shell("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | head -1"),labels,flush=True)
+        if any(x.lower() in ('open with','complete action using') for x in labels):
+            installer=first(ns,lambda x:x.lower()=='package installer')
+            if installer is not None:
+                tap(installer);time.sleep(.35)
+                once=first(nodes(),lambda x:x.lower()=='just once')
+                if once is not None and once.get('enabled')=='true':tap(once)
+                return None
         control=first(ns,lambda x:x.strip().lower() in ('install','update','continue','install anyway','settings','just once','allow from this source'))
         if control is not None:
             print('Installer:',label(control),flush=True);tap(control)
@@ -91,9 +98,7 @@ def install(code):
             tap(tile);time.sleep(.13);tap(tile)
         if 'Download complete' in labels and row is not None:
             tap(row)
-        if any(x.lower() in ('open with','complete action using') for x in labels):
-            installer=first(ns,lambda x:'package installer' in x.lower())
-            if installer is not None:tap(installer)
+
         return None
     uiwait(step,120)
 def downloads(apk):
