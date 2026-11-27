@@ -9,6 +9,7 @@ def label(node):
     return ' '.join(node.get(k,'') for k in ('text','content-desc')).strip()
 def summary(ns): return [label(x) for x in ns if label(x)]
 def tap(node):
+    print('Tap',node.get('resource-id'),label(node)[:160],node.get('bounds'),flush=True)
     x1,y1,x2,y2=map(int,re.findall(r'\d+',node.attrib['bounds']))
     shell(f'input tap {(x1+x2)//2} {(y1+y2)//2}')
 def uiwait(predicate,seconds=90):
@@ -62,14 +63,28 @@ def grant_install():
         if 'package:'+source in packages:shell('appops set '+source+' REQUEST_INSTALL_PACKAGES allow')
 def install(code):
     expected=f'versionCode={code} '
+    attempts=0
     def step(ns):
+        nonlocal attempts
+        attempts+=1
         if expected in shell('dumpsys package '+PKG):return True
         labels=summary(ns)
         if any(('not installed' in l.lower() or 'problem parsing' in l.lower()) for l in labels):
             raise AssertionError(labels)
-        control=first(ns,lambda x:x.strip().lower() in ('install','update','continue','install anyway','settings'))
+        if attempts%3==1:
+            print('System surface',shell("dumpsys activity activities | grep -E 'mResumedActivity|topResumedActivity' | head -1"),labels,flush=True)
+        control=first(ns,lambda x:x.strip().lower() in ('install','update','continue','install anyway','settings','just once','allow from this source'))
         if control is not None:
             print('Installer:',label(control),flush=True);tap(control)
+            return None
+        row=first(ns,lambda x:'rikkahub-'+version in x)
+        if row is not None and any('Downloads'==x for x in labels):
+            print('Downloads items',[(x.get('resource-id'),x.get('bounds')) for x in ns if 'item' in x.get('resource-id','')],flush=True)
+            tap(row);time.sleep(.13);tap(row)
+        if 'Download complete' in labels and row is not None:
+            tap(row)
+        if attempts==5 and code==210:
+            shell('cmd statusbar collapse');shell('am start -a android.intent.action.VIEW_DOWNLOADS')
         return None
     uiwait(step,120)
 def downloads(apk):
@@ -84,9 +99,18 @@ def downloads(apk):
         time.sleep(1)
     assert path, 'No verified Download Manager APK'
     print('Download Manager completed',path,digest,flush=True)
+    shell('input keyevent KEYCODE_WAKEUP');shell('wm dismiss-keyguard')
+    shell('cmd statusbar expand-notifications')
+    time.sleep(1.1)
+    ns=nodes()
+    print('Notification shade',summary(ns),flush=True)
+    notice=first(ns,lambda s:('rikkahub-'+version in s or s.lower()=='download complete'))
+    if notice is not None:
+        tap(notice);return
+    shell('cmd statusbar collapse')
     shell('am start -a android.intent.action.VIEW_DOWNLOADS')
-    def find(ns):return first(ns,lambda s:'rikkahub-'+version in s)
-    tap(uiwait(find,75))
+    row=uiwait(lambda ns:first(ns,lambda s:'rikkahub-'+version in s),35)
+    tap(row);time.sleep(.13);tap(row)
 def ready():
     launch()
     until=time.monotonic()+80

@@ -86,7 +86,8 @@ jobs:
         if: always()
         run: |
           adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity' | head -5 || true
-          adb logcat -d -v brief 'AndroidRuntime:E' '*:S' | tail -50 || true
+          adb logcat -d -v brief | grep -Ei 'InstallStart|PackageInstaller|unknown source|cannot start|not allowed to|DocumentsUI|installing a package' | tail -65 || true
+          adb logcat -d -v brief 'AndroidRuntime:E' '*:S' | tail -25 || true
           for f in "$RUNNER_TEMP"/overlay/snapshot-*.json "$RUNNER_TEMP/overlay/fixture.log" "$RUNNER_TEMP/overlay/provider.log"; do
             test ! -f "$f" || tail -100 "$f"
           done
