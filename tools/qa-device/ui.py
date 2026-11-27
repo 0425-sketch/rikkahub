@@ -73,6 +73,27 @@ def drawer():
     launch()
     tap('Messages')
     wait('QA-Synthetic')
+def settings():
+    drawer()
+    nodes=screen()
+    item=find(nodes,'Settings')
+    if not item:
+        # The drawer renders the Settings icon without an accessibility description.
+        # On the real screen this is the last circular button in the Stats row.
+        stats=find(nodes,'统计数据')
+        assert stats,labels(nodes)
+        sx,sy,sr,sb=map(int,re.findall(r'\d+',stats['bounds']))
+        matches=[]
+        for node in nodes:
+            if node.get('clickable')!='true': continue
+            x,y,r,b=map(int,re.findall(r'\d+',node['bounds']))
+            if x>=sr and y<=(sy+sb)//2<=b:
+                matches.append((x,node))
+        assert matches,[(n['bounds'],n.get('clickable')) for n in nodes]
+        item=max(matches,key=lambda entry:entry[0])[1]
+    touch(item)
+    wait('Settings')
+
 def event(label):
     for _ in range(16):
         if LOG.is_file() and any(json.loads(row)['event']==label for row in LOG.read_text().splitlines()): return
@@ -97,7 +118,7 @@ def media():
     time.sleep(2)
     mark('OpenAI Platform adapter sent the enhanced prompt to the isolated TLS fixture /v1/images/generations')
 def export_backup():
-    drawer(); tap('Settings'); scrolltap('Data Backup')
+    settings(); scrolltap('Data Backup')
     # Touch the action's supporting line to distinguish it from a same-named group heading.
     scrolltap('The ZIP may contain API keys. Store it somewhere private.')
     tap('SAVE')
@@ -131,7 +152,7 @@ def export_backup():
         f.write(recovered.getvalue());f.flush(); adb('push',f.name,'/sdcard/Download/qa-restoration.zip')
     mark('Normal local export read back with settings and Room data')
 def rescue():
-    drawer(); tap('Settings'); scrolltap('About'); touch(wait('Version'),long=True)
+    settings(); scrolltap('About'); touch(wait('Version'),long=True)
     wait('Debug Mode')
     mark('About version long press opened Debug Mode on installed APK')
     scrolltap('崩溃')
